@@ -1,0 +1,116 @@
+# Config Changes for FJW-Systems_BASE - Moving Base 10Hz (Clean)
+# Only MSM7, no MSM4, optimized for Moving Base
+# With full item IDs and layer specifications
+[del]
+[set]
+
+# UART1 deaktivieren
+  RAM CFG-UART1-ENABLED 0                    # write value 0 to item id 0x10520005 in layer 0
+Flash CFG-UART1-ENABLED 0                    # write value 0 to item id 0x10520005 in layer 2
+
+# UART2 Input Protocols - Base empfängt nichts
+  RAM CFG-UART2INPROT-UBX  0                    # write value 0 to item id 0x10750001 in layer 0
+Flash CFG-UART2INPROT-UBX  0                    # write value 0 to item id 0x10750001 in layer 2
+  RAM CFG-UART2INPROT-NMEA 0                    # write value 0 to item id 0x10750002 in layer 0
+Flash CFG-UART2INPROT-NMEA 0                    # write value 0 to item id 0x10750002 in layer 2
+  RAM CFG-UART2INPROT-RTCM3X 0                    # write value 0 to item id 0x10750004 in layer 0
+Flash CFG-UART2INPROT-RTCM3X 0                    # write value 0 to item id 0x10750004 in layer 2
+
+# UART2 Output Protocols - Nur RTCM3
+  RAM CFG-UART2OUTPROT-UBX 0                    # write value 0 to item id 0x10760001 in layer 0
+Flash CFG-UART2OUTPROT-UBX 0                    # write value 0 to item id 0x10760001 in layer 2
+  RAM CFG-UART2OUTPROT-NMEA 0                    # write value 0 to item id 0x10760002 in layer 0
+Flash CFG-UART2OUTPROT-NMEA 0                    # write value 0 to item id 0x10760002 in layer 2
+  RAM CFG-UART2OUTPROT-RTCM3X 1                    # write value 1 to item id 0x10760004 in layer 0
+Flash CFG-UART2OUTPROT-RTCM3X 1                    # write value 1 to item id 0x10760004 in layer 2
+
+# USB Output Protocols - für Monitoring
+  RAM CFG-USBOUTPROT-RTCM3X 1                    # write value 1 to item id 0x10780004 in layer 0
+Flash CFG-USBOUTPROT-RTCM3X 1                    # write value 1 to item id 0x10780004 in layer 2
+  RAM CFG-USBOUTPROT-UBX 1                    # write value 1 to item id 0x10780001 in layer 0
+Flash CFG-USBOUTPROT-UBX 1                    # write value 1 to item id 0x10780001 in layer 2
+  RAM CFG-USBOUTPROT-NMEA 1                    # write value 1 to item id 0x10780002 in layer 0
+Flash CFG-USBOUTPROT-NMEA 1                    # write value 1 to item id 0x10780002 in layer 2
+
+# UART2 Baudrate 921600
+Flash CFG-UART2-BAUDRATE   0xe1000              # write value 921600  0xe1000      to item id 0x40530001 in layer 2
+  RAM CFG-UART2-BAUDRATE   0xe1000              # write value 921600  0xe1000      to item id 0x40530001 in layer 0
+
+# ============================================
+# RTCM3 Messages für UART2 - NUR MSM7!
+# ============================================
+
+# Moving Base Position & Timing @ 10 Hz
+  RAM CFG-MSGOUT-RTCM_3X_TYPE4072_0_UART2 0xA                  # write value 10  0xA to item id 0x209102ff in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE4072_0_UART2 0xA                  # write value 10  0xA to item id 0x209102ff in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE4072_1_UART2 0xA                  # write value 10  0xA to item id 0x20910384 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE4072_1_UART2 0xA                  # write value 10  0xA to item id 0x20910384 in layer 2
+
+# MSM7 Messages @ 10 Hz (HIGH PRECISION)
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1077_UART2 0xA                    # write value 10  0xA to item id 0x209102d0 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1077_UART2 0xA                    # write value 10  0xA to item id 0x209102d0 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1087_UART2 0xA                    # write value 10  0xA to item id 0x209102d5 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1087_UART2 0xA                    # write value 10  0xA to item id 0x209102d5 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1097_UART2 0xA                    # write value 10  0xA to item id 0x20910318 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1097_UART2 0xA                    # write value 10  0xA to item id 0x20910318 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1127_UART2 0xA                    # write value 10  0xA to item id 0x209102da in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1127_UART2 0xA                    # write value 10  0xA to item id 0x209102da in layer 2
+
+# GLONASS Biases - alle 10 Sekunden (100 bei 10Hz Base)
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1230_UART2 0x64                   # write value 100  0x64 to item id 0x20910304 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1230_UART2 0x64                   # write value 100  0x64 to item id 0x20910304 in layer 2
+
+# MSM4 Messages DEAKTIVIERT (auf 0 setzen)
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1074_UART2 0x0                  # write value 0  0x0 to item id 0x2091035f in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1074_UART2 0x0                  # write value 0  0x0 to item id 0x2091035f in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1084_UART2 0x0                  # write value 0  0x0 to item id 0x20910364 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1084_UART2 0x0                  # write value 0  0x0 to item id 0x20910364 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1094_UART2 0x0                  # write value 0  0x0 to item id 0x20910369 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1094_UART2 0x0                  # write value 0  0x0 to item id 0x20910369 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1124_UART2 0x0                  # write value 0  0x0 to item id 0x2091036e in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1124_UART2 0x0                  # write value 0  0x0 to item id 0x2091036e in layer 2
+
+# Stationary Base Messages DEAKTIVIERT
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1005_UART2 0x0                  # write value 0  0x0 to item id 0x209102bd in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1005_UART2 0x0                  # write value 0  0x0 to item id 0x209102bd in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1006_UART2 0x0                  # write value 0  0x0 to item id 0x209102c2 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1006_UART2 0x0                  # write value 0  0x0 to item id 0x209102c2 in layer 2
+
+# ============================================
+# RTCM3 Messages für USB - Monitoring @ 10 Hz
+# ============================================
+
+  RAM CFG-MSGOUT-RTCM_3X_TYPE4072_0_USB 0xA                  # write value 10  0xA to item id 0x20910301 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE4072_0_USB 0xA                  # write value 10  0xA to item id 0x20910301 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE4072_1_USB 0xA                  # write value 10  0xA to item id 0x20910386 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE4072_1_USB 0xA                  # write value 10  0xA to item id 0x20910386 in layer 2
+
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1077_USB 0xA                  # write value 10  0xA to item id 0x209102d2 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1077_USB 0xA                  # write value 10  0xA to item id 0x209102d2 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1087_USB 0xA                  # write value 10  0xA to item id 0x209102d7 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1087_USB 0xA                  # write value 10  0xA to item id 0x209102d7 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1097_USB 0xA                  # write value 10  0xA to item id 0x2091031a in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1097_USB 0xA                  # write value 10  0xA to item id 0x2091031a in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1127_USB 0xA                  # write value 10  0xA to item id 0x209102dc in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1127_USB 0xA                  # write value 10  0xA to item id 0x209102dc in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1230_USB 0x64                  # write value 100  0x64 to item id 0x20910306 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1230_USB 0x64                  # write value 100  0x64 to item id 0x20910306 in layer 2
+
+# MSM4 auch für USB deaktivieren
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1074_USB 0x0                  # write value 0  0x0 to item id 0x20910361 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1074_USB 0x0                  # write value 0  0x0 to item id 0x20910361 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1084_USB 0x0                  # write value 0  0x0 to item id 0x20910366 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1084_USB 0x0                  # write value 0  0x0 to item id 0x20910366 in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1094_USB 0x0                  # write value 0  0x0 to item id 0x2091036b in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1094_USB 0x0                  # write value 0  0x0 to item id 0x2091036b in layer 2
+  RAM CFG-MSGOUT-RTCM_3X_TYPE1124_USB 0x0                  # write value 0  0x0 to item id 0x20910370 in layer 0
+Flash CFG-MSGOUT-RTCM_3X_TYPE1124_USB 0x0                  # write value 0  0x0 to item id 0x20910370 in layer 2
+
+# ============================================
+# UBX Messages für USB Monitoring @ 10 Hz
+# ============================================
+
+  RAM CFG-MSGOUT-UBX_NAV_PVT_USB 0xA                  # write value 10  0xA to item id 0x20910009 in layer 0
+Flash CFG-MSGOUT-UBX_NAV_PVT_USB 0xA                  # write value 10  0xA to item id 0x20910009 in layer 2
+  RAM CFG-MSGOUT-UBX_NAV_STATUS_USB 0x1                  # write value 1  0x1 to item id 0x2091001b in layer 0
+Flash CFG-MSGOUT-UBX_NAV_STATUS_USB 0x1                  # write value 1  0x1 to item id 0x2091001b in layer 2

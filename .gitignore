@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.Python
+.pytest_cache/
+.venv/
+venv/
+
+# Sensitive — echte COM-Port-IDs der Hardware
+system/config/config.json
+
+# Daten gehören nie ins Repo
+*.csv
+*.mp4
+*.MOV
+*.avi
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup-/Temp-Files
+*~
+*.bak
+~$*
+
+# Git-Trash
+/_trash/

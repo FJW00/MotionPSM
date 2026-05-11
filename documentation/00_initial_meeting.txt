@@ -1,0 +1,33 @@
+BA_Weigand
+
+Erfassung von Schwingungen im Spritzengestänge durch Low-Cost Messystem
+
+3 Aufbauten:
+	-F9P => 3-4 Empfänger, Zwei an mittlerem teil des Spritzengestänge, um Heading und Offset aufzunehmen + außen jeweils einen um die Schwingen detektieren zu können
+		- Seriell? Config?
+	-Acceleration => mit Beschleunigungssensor an Gestänge enden und einen in der Mitte die Beschleunigungen aufnehmen und diese folglich zu ermitteln
+		- Interrupts/datalogger?
+	-openCV => Kamera an Gestänge Mitte, welche nach außen auf zwei am Gestänge montierte Bälle schaut und somit durch Bewegung der Bälle die Schwingung erkennen kann.
+		- Schwierig umsetzbar
+von den drei aufbauten werden zunächst der F9P und das Accelaration Modell genauer betrachtet.
+
+Sollbedingungen:
+- Modular
+- Datenerfassung und Speicherung auf SD-Karte
+- Modular
+- Prozentual auf Gestängebreite Schwingungen an Punkten berechnen
+
+
+Aufgetretene Fragen:
+- Wie teile ich die Korrekturdaten auf, dass alle die gleichen Korrekturdaten haben?
+- Berechnungen über Dopplereffekt?
+- Wie baue ich es Modular auf
+- Was gibt es schon für vergleichbare Systeme
+- Wieso tue ich das überhaupt (Precision Farming)
+- Welches System am zuverlässigsten/kostengünstigsten/genausten?
+
+Vorgehensweise:
+- Entwickeln der zwei Testsysteme
+- Testen der Systeme/ Validieren an der LLA mit Spritzen verschiedener Hersteller
+	- Mit Meterstab/Skala auf Boden die Auslenkung messen und so die Sensoren kalibrieren
+

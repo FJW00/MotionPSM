@@ -1,0 +1,61 @@
+# Config changes FJW-Systems Rover - 10Hz
+# Modified for 921600 baud, RTCM3 input
+# With full item IDs and layer specifications
+[del]
+[set]
+
+# UART1 deaktivieren
+  RAM CFG-UART1-ENABLED 0                    # write value 0 to item id 0x10520005 in layer 0
+Flash CFG-UART1-ENABLED 0                    # write value 0 to item id 0x10520005 in layer 2
+
+# UART2 Input Protocols - UBX + RTCM3
+  RAM CFG-UART2INPROT-UBX  1                    # write value 1 to item id 0x10750001 in layer 0
+Flash CFG-UART2INPROT-UBX  1                    # write value 1 to item id 0x10750001 in layer 2
+  RAM CFG-UART2INPROT-NMEA 0                    # write value 0 to item id 0x10750002 in layer 0
+Flash CFG-UART2INPROT-NMEA 0                    # write value 0 to item id 0x10750002 in layer 2
+  RAM CFG-UART2INPROT-RTCM3X 1                    # write value 1 to item id 0x10750004 in layer 0
+Flash CFG-UART2INPROT-RTCM3X 1                    # write value 1 to item id 0x10750004 in layer 2
+
+# UART2 Output Protocols - UBX + NMEA (kein RTCM3)
+  RAM CFG-UART2OUTPROT-UBX 1                    # write value 1 to item id 0x10760001 in layer 0
+Flash CFG-UART2OUTPROT-UBX 1                    # write value 1 to item id 0x10760001 in layer 2
+  RAM CFG-UART2OUTPROT-NMEA 1                    # write value 1 to item id 0x10760002 in layer 0
+Flash CFG-UART2OUTPROT-NMEA 1                    # write value 1 to item id 0x10760002 in layer 2
+  RAM CFG-UART2OUTPROT-RTCM3X 0                    # write value 0 to item id 0x10760004 in layer 0
+Flash CFG-UART2OUTPROT-RTCM3X 0                    # write value 0 to item id 0x10760004 in layer 2
+
+# USB Input Protocols
+  RAM CFG-USBINPROT-UBX    1                    # write value 1 to item id 0x10770001 in layer 0
+Flash CFG-USBINPROT-UBX    1                    # write value 1 to item id 0x10770001 in layer 2
+  RAM CFG-USBINPROT-NMEA   1                    # write value 1 to item id 0x10770002 in layer 0
+Flash CFG-USBINPROT-NMEA   1                    # write value 1 to item id 0x10770002 in layer 2
+  RAM CFG-USBINPROT-RTCM3X 1                    # write value 1 to item id 0x10770004 in layer 0
+Flash CFG-USBINPROT-RTCM3X 1                    # write value 1 to item id 0x10770004 in layer 2
+
+# USB Output Protocols
+  RAM CFG-USBOUTPROT-UBX   1                    # write value 1 to item id 0x10780001 in layer 0
+Flash CFG-USBOUTPROT-UBX   1                    # write value 1 to item id 0x10780001 in layer 2
+  RAM CFG-USBOUTPROT-NMEA  1                    # write value 1 to item id 0x10780002 in layer 0
+Flash CFG-USBOUTPROT-NMEA  1                    # write value 1 to item id 0x10780002 in layer 2
+  RAM CFG-USBOUTPROT-RTCM3X 0                    # write value 0 to item id 0x10780004 in layer 0
+Flash CFG-USBOUTPROT-RTCM3X 0                    # write value 0 to item id 0x10780004 in layer 2
+
+# UART2 Baudrate 921600
+Flash CFG-UART2-BAUDRATE   0xe1000              # write value 921600  0xe1000 to item id 0x40530001 in layer 2
+  RAM CFG-UART2-BAUDRATE   0xe1000              # write value 921600  0xe1000 to item id 0x40530001 in layer 0
+
+# ============================================
+# UBX Messages für USB @ 10 Hz
+# ============================================
+
+# NAV-RELPOSNED @ 10Hz (WICHTIG für Ihre Python-Auswertung!)
+  RAM CFG-MSGOUT-UBX_NAV_RELPOSNED_USB 0xA                  # write value 10  0xA to item id 0x2091008e in layer 0
+Flash CFG-MSGOUT-UBX_NAV_RELPOSNED_USB 0xA                  # write value 10  0xA to item id 0x2091008e in layer 2
+
+# NAV-PVT @ 10Hz für Monitoring
+  RAM CFG-MSGOUT-UBX_NAV_PVT_USB 0xA                  # write value 10  0xA to item id 0x20910009 in layer 0
+Flash CFG-MSGOUT-UBX_NAV_PVT_USB 0xA                  # write value 10  0xA to item id 0x20910009 in layer 2
+
+# NAV-STATUS @ 1Hz
+  RAM CFG-MSGOUT-UBX_NAV_STATUS_USB 0x1                  # write value 1  0x1 to item id 0x2091001b in layer 0
+Flash CFG-MSGOUT-UBX_NAV_STATUS_USB 0x1                  # write value 1  0x1 to item id 0x2091001b in layer 2

@@ -1,0 +1,7 @@
+{
+  "BASE_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<BASE-ID>-if00-port0",
+  "ROVER1_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<ROVER1-ID>-if00-port0",
+  "ROVER2_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<ROVER2-ID>-if00-port0",
+  "LIVE_PLOT": true
+}
+
