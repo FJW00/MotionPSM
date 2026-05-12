@@ -1,0 +1,33 @@
+[Unit]
+Description=MotionPSM — GNSS-Schwingungsmesssystem (FJW Systems)
+Documentation=https://github.com/FJW00/MotionPSM
+After=network.target multi-user.target
+Wants=network.target
+
+[Service]
+Type=simple
+User={{USER}}
+Group={{USER}}
+WorkingDirectory={{REPO_DIR}}/system/pi
+
+# 10 Sek warten nach Boot, damit USB-Hardware (F9P-Module) erkannt ist
+ExecStartPre=/bin/sleep 10
+ExecStart={{REPO_DIR}}/system/pi/autostart_schwingung_fw.sh
+
+# Bei Crash automatisch neu starten, aber nicht endlos im Loop
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Logging über journalctl (systemd-Standard)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=motionpsm
+
+# Sicherheit (Pi-typisch konservativ)
+PrivateTmp=false
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

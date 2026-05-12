@@ -4,6 +4,61 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-11 — Autostart: systemd-Service + neues Wrapper-Script
+
+**Was:**
+
+Drei Files in `system/pi/`:
+- `autostart_schwingung_fw.sh` — überarbeitetes Wrapper-Script.
+  - Erkennt seinen eigenen Pfad und davon ausgehend Repo-Pfad automatisch (egal wo das Repo geclont ist).
+  - Prüft, ob `config.json` existiert — wenn nicht, klare Fehlermeldung.
+  - Aktiviert venv falls vorhanden (`<repo>/.venv/`), sonst System-Python3.
+  - `exec python3` ersetzt den Shell-Prozess, damit systemd Crashes erkennt.
+- `motionpsm.service.template` — systemd-Service-Template mit Platzhaltern `{{USER}}` und `{{REPO_DIR}}`.
+  - 10 Sek `ExecStartPre=/bin/sleep` damit USB-Hardware Zeit hat sich zu enumerieren.
+  - `Restart=on-failure` mit `StartLimitBurst=10` in 300 Sek — bei Crashes Restart-Loop, aber kein endloses Re-Loopen.
+  - Logging über journalctl (`SyslogIdentifier=motionpsm`).
+- `install_autostart.sh` — Einmal-Installer.
+  - Erkennt aktuellen User + Repo-Pfad automatisch.
+  - Rendert das Template mit den korrekten Werten.
+  - Kopiert generierte Service-Datei nach `/etc/systemd/system/` (sudo).
+  - `systemctl enable` damit Service beim Boot startet.
+
+**Warum:**
+
+- Altes `autostart_schwingung_fw.sh` hatte hardcoded Pfade aus dem Pre-Refactor-Stand (`/home/ba_weigand/software/final/PI/server.py`) — funktioniert nach Repo-Restrukturierung nicht mehr.
+- Shebang stand auf Zeile 4 statt Zeile 1 — wurde so nicht als Bash-Script erkannt.
+- Es gab keinen systemd-Service. Ein `.sh` allein startet nicht beim Boot.
+- Neue Lösung ist portabel (Repo kann überall liegen), user-agnostisch (Installer erkennt User), und resistent (Restart-on-failure).
+
+**Test offen:**
+
+Am Pi einmalig:
+```bash
+cd ~/MotionPSM   # oder wo immer geclont
+git fetch
+git checkout feature/rover3       # oder refactor/cleanup
+cp system/config/config.example.json system/config/config.json
+nano system/config/config.json    # COM-Port-IDs eintragen
+bash system/pi/install_autostart.sh
+sudo systemctl start motionpsm
+sudo systemctl status motionpsm
+sudo journalctl -u motionpsm -f
+```
+
+Erwartete Sanity-Checks:
+- `systemctl status motionpsm` zeigt `active (running)`
+- `journalctl` zeigt "Roverthread 1/2/3 started", "Basethread started", "[Logger] Thread gestartet"
+- `http://<pi-ip>:5000` liefert das Frontend
+
+**Risiko:**
+
+- `ExecStartPre=/bin/sleep 10` reicht evtl. nicht wenn USB-Hardware langsam enumeriert. Notfalls in der Service-Datei auf 20 oder 30 erhöhen.
+- venv-Detection: wenn der User vorher ein venv angelegt hat, das aber unter einem anderen Pfad als `<repo>/.venv/` liegt, wird es ignoriert. Falls nötig: VENV_DIR im autostart-Script anpassen.
+- Logs landen in journalctl, nicht in einer Datei. Falls eine eigene Log-Datei gewünscht: `StandardOutput=append:/var/log/motionpsm.log` ergänzen.
+
+---
+
 ## 2026-05-11 — Visualisierung neu: Gestänge-Hero + alle 3 Rover + Längsachse
 
 **Was:**
