@@ -4,6 +4,71 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-11 — Refactor Stufe 2: RoverState-Klasse, schlankerer CSV
+
+Branch: `refactor/cleanup` (basiert auf `feature/rover3`)
+
+**Was:**
+
+Komplette Neustrukturierung von `system/pi/gps_measurement.py`:
+
+- **`RoverState`-Klasse** konsolidiert die drei früheren Rover-Threads (`Rover1_Thread`, `Rover2_Thread`, `Rover3_Thread`) in eine Klasse. Jedes Rover-Modul wird als `RoverState(idx, com_port)`-Instanz mit eigener `run()`-Methode betrieben. Code-Duplikation: weg.
+- **`BaseState`-Klasse** analog für die Base.
+- **Alte Methoden entfernt** (waren die Vor-R3-Mittelachsen-Hypothesen, mit R3-Achse obsolet):
+  - `init_heading` / `init_heading_iTOW` + `abs_heading`
+  - `delta_heading` / `heading_buffer_delta_*`
+  - `heading_buffer_*` (war alte 2-Element-Differenz-Logik)
+  - `rover*_vibration_buffer` (ungenutzt)
+- **Behalten** (sinnvolle Schwingungsmetriken):
+  - `mov_avg_heading` — Heading-Schwingung in ° (Moving-Average)
+  - `R*_angular_velocity` — Linear-Regression über 20 Samples = ° pro Sekunde
+  - `height_boom` — Höhenvariation (Pitch-Indikator)
+  - `Base_Heading_via_motion` — Base-Heading aus Eigenbewegung, als Vergleich zu axis_heading
+- **CSV-Header** von 70 auf **61 Spalten**:
+  - Pro Rover: 17 → **14 Spalten** (R*_absolute_Heading, R*_delta_Heading, R*_Rover_date raus)
+  - Base: 8 Spalten unverändert
+  - Berechnungen: 11 Spalten unverändert
+- **Konstanten** an den Modul-Anfang gezogen — keine Magic-Numbers mehr verstreut.
+- **Module-Globals** bleiben für `server.py`-Kompatibilität. `quality_rover*` und `vibration_history_rover*` zeigen nach `start_measurement()` direkt auf die deques der State-Objekte (shared reference).
+
+**Zeilenzahl:** 932 → **583** (−37 %)
+
+**server.py:**
+
+Unverändert. Die refactored `gps_measurement.py` exponiert weiterhin alle Module-Globals, die der Server liest. Smoke-Test mit Flask-Test-Client bestätigt: `GET /` und `GET /data` (JSON, 16 Felder) liefern HTTP 200.
+
+**Tests (Mock-basiert, vor Hardware):**
+
+- ✓ Modul-Import (mit gemocktem serial + pyubx2)
+- ✓ `RoverState._handle_relposned`: relNED korrekt extrahiert, Message-Queue hat genau 14 Spalten, globaler `last_relNED_r1` aktualisiert
+- ✓ Logger-Synchronisation: 3 Rover + 1 Base mit identischem iTOW → Geometrie-Auswertung läuft, R1 lateral = +1200 cm (links, korrekt), R2 = −1200 cm (rechts), Achsenlänge = 5.0 m
+- ✓ Toleranz-Reject: Rover-Spread > 100 ms → Logger verwirft Sample
+- ✓ `server.py` Flask-Test-Client: HTTP 200 auf `/` und `/data`
+
+**Test offen (Hardware):**
+
+- **Bench-Test am Pi**: läuft `python3 system/pi/gps_measurement.py` 30 Sek ohne Crash? Wird CSV mit 61 Spalten geschrieben?
+- **Vergleich zu `feature/rover3`**: Gleiche Strecke fahren, beide Branches CSVs nehmen → `VarA_R1_lateral_cm` und `VarA_R2_lateral_cm` sollten praktisch identisch sein. Wenn nicht: Bug in einem der beiden Branches.
+- **server.py-Frontend** läuft mit refactored gps weiter (Mock-Test bestanden, aber echter Browser-Test fehlt).
+
+**Risiko:**
+
+- `Base_alt = None` initial (im alten Code `= 0`). `if Base_alt is not None`-Prüfung greift jetzt sauber. Niedriges Risiko.
+- Globale Variable-Updates über `_update_global_*` Helper: kostet kein Performance-Bit, aber etwas Verwirrungsspielraum durch indirekten Update. Bei Bedarf direkter coden.
+- Race-Condition relNED: Tuple-Assignment ist via GIL atomar (CPython garantiert).
+
+**Wie Falk testet:**
+
+```bash
+# Im zweiten Ordner (MotionPSM_repo_refactor) — auf refactor/cleanup
+cd ~/Documents/FJW_Schwingung/MotionPSM_repo_refactor
+cp system/config/config.example.json system/config/config.json
+# COM-Port-IDs eintragen
+python3 system/pi/server.py
+```
+
+---
+
 ## 2026-05-11 — Visualisierung neu: Gestänge-Hero + alle 3 Rover + Längsachse
 
 **Was:**
