@@ -4,6 +4,7 @@ import gps_measurement as gps
 import threading
 import os
 
+# static_folder='static' ist Default — Flask serviert system/pi/static/ unter /static/
 app = Flask(__name__)
 
 
@@ -17,35 +18,73 @@ state = MeasurementState()
 
 HTML_PAGE = '''
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>MotionPSM – Gestängebewegungs-Messsystem (FJW Systems)</title>
+    <title>MotionPSM – FJW Systems</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       :root {
         --col-r1: #1976d2;
         --col-r2: #d32f2f;
         --col-r3: #2e7d32;
-        --col-base: #555;
         --col-bg: #fafafa;
         --col-card: #ffffff;
         --col-border: #ddd;
+        --col-brand: #4d4d4d;
       }
       * { box-sizing: border-box; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         margin: 0;
         padding: 20px;
         background: var(--col-bg);
         color: #222;
       }
-      h1 { text-align: center; margin: 0 0 4px; font-size: 22px; }
-      .subtitle { text-align: center; color: #666; margin: 0 0 20px; font-size: 13px; }
+
+      /* ---------- Brand Header (Logo links + Schriftzug) ---------- */
+      .brand-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        max-width: 1100px;
+        margin: 0 auto 16px;
+        padding: 4px 0;
+      }
+      .brand-logo {
+        height: 56px;
+        width: auto;
+      }
+      .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+      .brand-name { font-size: 28px; font-weight: 700; color: var(--col-brand); letter-spacing: 0.2px; }
+      .brand-tagline { font-size: 12px; color: #888; font-weight: 400; margin-top: 3px; letter-spacing: 0.4px; text-transform: uppercase; }
+
+      /* ---------- Titel + Untertitel (zentriert, größer) ---------- */
+      h1 {
+        text-align: center;
+        margin: 24px 0 8px;
+        font-size: 32px;
+        font-weight: 600;
+        color: #222;
+      }
+      .subtitle {
+        text-align: center;
+        color: #666;
+        margin: 0 0 24px;
+        font-size: 16px;
+        font-weight: 400;
+      }
+
+      /* ---------- Controls ---------- */
       .controls { text-align: center; margin: 16px 0; }
       .controls button {
-        padding: 10px 22px;
+        padding: 11px 24px;
         font-size: 14px;
+        font-family: inherit;
+        font-weight: 500;
         border-radius: 8px;
         border: 1px solid var(--col-border);
         background: var(--col-card);
@@ -53,15 +92,15 @@ HTML_PAGE = '''
         margin: 0 4px;
       }
       .controls button:hover { background: #f0f0f0; }
-      .runtime { text-align: center; color: green; margin: 8px 0; }
+      .runtime { text-align: center; color: green; margin: 8px 0; font-size: 14px; }
       .runtime.stopped { color: #d32f2f; }
 
-      /* --- Hero: Gestänge-Visualisierung --- */
+      /* ---------- Hero: Boom Visualization ---------- */
       .boom-hero {
         background: var(--col-card);
         border: 1px solid var(--col-border);
         border-radius: 12px;
-        padding: 20px;
+        padding: 24px;
         margin: 16px auto;
         max-width: 1100px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
@@ -70,34 +109,28 @@ HTML_PAGE = '''
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
         flex-wrap: wrap;
         gap: 12px;
       }
-      .boom-header h2 { margin: 0; font-size: 18px; }
-      .boom-config label {
-        font-size: 13px;
-        margin-right: 4px;
-      }
+      .boom-header h2 { margin: 0; font-size: 22px; font-weight: 600; }
+      .boom-config label { font-size: 13px; margin-right: 4px; font-weight: 500; }
       .boom-config input {
-        width: 90px;
-        padding: 6px 8px;
-        font-size: 14px;
-        border: 1px solid var(--col-border);
-        border-radius: 6px;
+        width: 90px; padding: 6px 8px; font-size: 14px;
+        border: 1px solid var(--col-border); border-radius: 6px;
+        font-family: inherit;
       }
       .boom-svg-wrap {
         width: 100%;
         background: linear-gradient(to bottom, #f5f5f5, #ffffff);
         border-radius: 8px;
         padding: 16px 8px;
-        position: relative;
       }
       .boom-values {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
         gap: 12px;
-        margin-top: 16px;
+        margin-top: 18px;
       }
       .value-box {
         background: var(--col-card);
@@ -106,14 +139,14 @@ HTML_PAGE = '''
         padding: 14px;
         text-align: center;
       }
-      .value-box .label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
-      .value-box .value { font-size: 34px; font-weight: 600; margin: 6px 0 0; }
-      .value-box .unit { font-size: 14px; color: #888; }
-      .value-box.r1 .value { color: #1976d2; }
-      .value-box.r2 .value { color: #d32f2f; }
+      .value-box .label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+      .value-box .value { font-size: 36px; font-weight: 600; margin: 6px 0 0; }
+      .value-box .unit { font-size: 14px; color: #888; font-weight: 400; }
+      .value-box.r1 .value { color: var(--col-r1); }
+      .value-box.r2 .value { color: var(--col-r2); }
       .value-box.delta .value { color: #444; }
 
-      /* --- Sekundärer Bereich: Qualität + Achse --- */
+      /* ---------- Secondary: Quality + Axis ---------- */
       .secondary-grid {
         display: grid;
         grid-template-columns: 2fr 1fr;
@@ -121,29 +154,33 @@ HTML_PAGE = '''
         max-width: 1100px;
         margin: 16px auto;
       }
-      .quality-grid {
+      .quality-grid, .axis-info {
         background: var(--col-card);
         border: 1px solid var(--col-border);
         border-radius: 12px;
         padding: 16px;
       }
-      .quality-grid h3 { margin: 0 0 12px; font-size: 14px; color: #666; }
+      .quality-grid h3, .axis-info h3, .chart-card h3 {
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: #666;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
       .quality-row {
         display: grid;
         grid-template-columns: 80px 1fr 1fr 1fr;
         gap: 8px;
         align-items: center;
-        padding: 6px 0;
+        padding: 7px 0;
         font-size: 13px;
       }
       .quality-row + .quality-row { border-top: 1px dashed #eee; }
-      .rover-tag {
-        font-weight: 600;
-      }
-      .rover-tag.r1 { color: #1976d2; }
-      .rover-tag.r2 { color: #d32f2f; }
-      .rover-tag.r3 { color: #2e7d32; }
-      .rover-tag.base { color: var(--col-base); }
+      .rover-tag { font-weight: 600; }
+      .rover-tag.r1 { color: var(--col-r1); }
+      .rover-tag.r2 { color: var(--col-r2); }
+      .rover-tag.r3 { color: var(--col-r3); }
       .quality {
         display: inline-block;
         font-weight: 600;
@@ -158,108 +195,109 @@ HTML_PAGE = '''
       .q-5 { background-color: #f9a825; color: #333; }
       .q-6 { background-color: #d32f2f; }
 
-      .axis-info {
-        background: var(--col-card);
-        border: 1px solid var(--col-border);
-        border-radius: 12px;
-        padding: 16px;
-      }
-      .axis-info h3 { margin: 0 0 12px; font-size: 14px; color: #666; }
       .axis-info .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
       .axis-info .row .v { font-weight: 600; }
 
-      /* --- Charts --- */
-      .charts-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        max-width: 1100px;
-        margin: 16px auto;
-      }
+      /* ---------- Single Chart ---------- */
+      .chart-row { max-width: 1100px; margin: 16px auto; }
       .chart-card {
         background: var(--col-card);
         border: 1px solid var(--col-border);
         border-radius: 12px;
-        padding: 16px;
+        padding: 18px;
       }
-      .chart-card h3 { margin: 0 0 8px; font-size: 14px; color: #666; }
       canvas { max-width: 100%; }
 
+      /* ---------- Mobile ---------- */
       @media (max-width: 800px) {
+        .brand-logo { height: 44px; }
+        .brand-name { font-size: 22px; }
+        h1 { font-size: 24px; }
+        .subtitle { font-size: 14px; }
+        .boom-header h2 { font-size: 18px; }
         .boom-values { grid-template-columns: 1fr; }
         .secondary-grid { grid-template-columns: 1fr; }
-        .charts-row { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
-    <h1>MotionPSM – Gestängebewegungs-Messsystem</h1>
-    <div class="subtitle">FJW Systems · Live-Anzeige</div>
+
+    <!-- Brand Header: Logo + FJW Systems -->
+    <div class="brand-header">
+      <img src="{{ url_for('static', filename='logo_fjw.png') }}" alt="FJW Logo" class="brand-logo">
+      <div class="brand-text">
+        <div class="brand-name">FJW Systems</div>
+        <div class="brand-tagline">MotionPSM &middot; Boom Motion Measurement</div>
+      </div>
+    </div>
+
+    <h1>Boom Motion Measurement</h1>
+    <div class="subtitle">Real-Time Monitor</div>
 
     {% if running %}
-      <div class="runtime">Messung läuft seit <span id="runtime">0</span> s</div>
+      <div class="runtime">Measurement running for <span id="runtime">0</span> s</div>
       <div class="controls">
-        <button onclick="exportAndRedirect()">CSV exportieren</button>
-        <a href="{{ url_for('stop') }}"><button>Messung stoppen</button></a>
+        <button onclick="exportAndRedirect()">Export CSV</button>
+        <a href="{{ url_for('stop') }}"><button>Stop Measurement</button></a>
       </div>
 
-      <!-- ============ HERO: Gestänge ============ -->
+      <!-- Hero -->
       <div class="boom-hero">
         <div class="boom-header">
-          <h2>Aktuelle Gestänge-Auslenkung</h2>
+          <h2>Current Boom Deflection</h2>
           <div class="boom-config">
-            <label for="boom_width_cm">Gestängebreite (cm):</label>
+            <label for="boom_width_cm">Boom Width (cm):</label>
             <input type="number" id="boom_width_cm" value="1500" step="100" min="500" max="5000">
           </div>
         </div>
 
         <div class="boom-svg-wrap">
           <svg id="boom_svg" viewBox="-110 -40 220 80" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;">
-            <!-- Mittelachse -->
+            <!-- Center axis -->
             <line x1="0" y1="-35" x2="0" y2="35" stroke="#bbb" stroke-dasharray="3,3" stroke-width="0.5"/>
-            <text x="0" y="-37" text-anchor="middle" font-size="4" fill="#888">Mittelachse</text>
-            <!-- Soll-Gestänge -->
-            <line id="boom_sollline" x1="-90" y1="0" x2="90" y2="0" stroke="#ccc" stroke-width="1.5" stroke-dasharray="2,2"/>
-            <!-- Ist-Gestänge: R1 -> Mittelpunkt(0) -> R2 -->
+            <text x="0" y="-37" text-anchor="middle" font-size="4" fill="#888">Center Axis</text>
+            <!-- Target boom line -->
+            <line x1="-90" y1="0" x2="90" y2="0" stroke="#ccc" stroke-width="1.5" stroke-dasharray="2,2"/>
+            <!-- Actual boom: R1 -> mid -> R2 -->
             <line id="boom_istline_l" x1="-90" y1="0" x2="0" y2="0" stroke="#1976d2" stroke-width="2"/>
             <line id="boom_istline_r" x1="0" y1="0" x2="90" y2="0" stroke="#d32f2f" stroke-width="2"/>
-            <!-- Rover-Marker -->
+            <!-- Rover markers (R1 left, R2 right) -->
             <circle id="boom_r1" cx="-90" cy="0" r="3.5" fill="#1976d2"/>
             <circle id="boom_r2" cx="90" cy="0" r="3.5" fill="#d32f2f"/>
             <text id="boom_r1_label" x="-90" y="-8" text-anchor="middle" font-size="5" fill="#1976d2" font-weight="600">R1</text>
             <text id="boom_r2_label" x="90" y="-8" text-anchor="middle" font-size="5" fill="#d32f2f" font-weight="600">R2</text>
-            <!-- R3 Marker oben (Fahrtrichtung) -->
-            <circle id="boom_r3" cx="0" cy="-25" r="3.5" fill="#2e7d32"/>
-            <text x="0" y="-28" text-anchor="middle" font-size="5" fill="#2e7d32" font-weight="600">R3</text>
-            <text x="0" y="-30.5" text-anchor="middle" font-size="3" fill="#888">(Fahrtrichtung)</text>
+            <!-- R3 (vorne, transparent, dicht am Gestänge) -->
+            <circle id="boom_r3" cx="0" cy="-12" r="3" fill="#2e7d32" fill-opacity="0.45"/>
+            <text x="0" y="-16" text-anchor="middle" font-size="4.5" fill="#2e7d32" font-weight="600" opacity="0.7">R3</text>
+            <text x="0" y="-19" text-anchor="middle" font-size="2.8" fill="#999" font-style="italic">Direction of Travel</text>
           </svg>
         </div>
 
         <div class="boom-values">
           <div class="value-box r1">
-            <div class="label">R1 (links)</div>
+            <div class="label">R1 (left)</div>
             <div class="value"><span id="r1_lat">+0.0</span> <span class="unit">cm</span></div>
           </div>
           <div class="value-box delta">
-            <div class="label">Gesamt-Differenz R1 − R2</div>
+            <div class="label">Total Difference R1 − R2</div>
             <div class="value"><span id="boom_total">0.0</span> <span class="unit">cm</span></div>
           </div>
           <div class="value-box r2">
-            <div class="label">R2 (rechts)</div>
+            <div class="label">R2 (right)</div>
             <div class="value"><span id="r2_lat">-0.0</span> <span class="unit">cm</span></div>
           </div>
         </div>
       </div>
 
-      <!-- ============ Sekundär: Qualität + Achse ============ -->
+      <!-- Quality + Axis -->
       <div class="secondary-grid">
         <div class="quality-grid">
-          <h3>Signalqualität pro Modul</h3>
+          <h3>Signal Quality per Module</h3>
           <div class="quality-row" style="font-weight:600;color:#888;font-size:11px;border-top:none;">
-            <div>Modul</div>
+            <div>Module</div>
             <div>Fix</div>
-            <div>Ang.Velo</div>
-            <div>Schwingung</div>
+            <div>Ang. Velocity</div>
+            <div>Vibration</div>
           </div>
           <div class="quality-row">
             <div class="rover-tag r1">Rover 1</div>
@@ -281,71 +319,46 @@ HTML_PAGE = '''
           </div>
         </div>
         <div class="axis-info">
-          <h3>Maschinen-Längsachse (Base → R3)</h3>
-          <div class="row"><span>Achsenlänge:</span><span class="v"><span id="axis_length">0.00</span> m</span></div>
+          <h3>Vehicle Longitudinal Axis (Base → R3)</h3>
+          <div class="row"><span>Axis Length:</span><span class="v"><span id="axis_length">0.00</span> m</span></div>
           <div class="row"><span>Heading:</span><span class="v"><span id="axis_heading">0.0</span>°</span></div>
-          <div class="row"><span>Fahrgeschwindigkeit:</span><span class="v"><span id="base_speed">0.0</span> km/h</span></div>
+          <div class="row"><span>Vehicle Speed:</span><span class="v"><span id="base_speed">0.0</span> km/h</span></div>
         </div>
       </div>
 
-      <!-- ============ Charts ============ -->
-      <div class="charts-row">
+      <!-- Single chart: Deflection history -->
+      <div class="chart-row">
         <div class="chart-card">
-          <h3>Verlauf: Auslenkung R1 / R2 (cm)</h3>
+          <h3>Deflection History — R1 / R2 (cm)</h3>
           <canvas id="lateralChart" width="500" height="280"></canvas>
-        </div>
-        <div class="chart-card">
-          <h3>Heading-Schwingung (°, Moving-Avg)</h3>
-          <canvas id="vibrationChart" width="500" height="280"></canvas>
         </div>
       </div>
 
     {% else %}
-      <div class="runtime stopped">Messung gestoppt.</div>
+      <div class="runtime stopped">Measurement stopped.</div>
       <div class="controls">
-        <a href="{{ url_for('start') }}"><button>Messung starten</button></a>
+        <a href="{{ url_for('start') }}"><button>Start Measurement</button></a>
       </div>
     {% endif %}
 
     <script>
       {% if running %}
-      // ---------- Charts ----------
       const lateralCtx = document.getElementById('lateralChart').getContext('2d');
       const lateralChart = new Chart(lateralCtx, {
         type: 'line',
         data: {
           labels: [],
           datasets: [
-            { label: 'R1 (links)', borderColor: '#1976d2', data: [], fill: false, tension: 0.2 },
-            { label: 'R2 (rechts)', borderColor: '#d32f2f', data: [], fill: false, tension: 0.2 },
+            { label: 'R1 (left)', borderColor: '#1976d2', data: [], fill: false, tension: 0.2 },
+            { label: 'R2 (right)', borderColor: '#d32f2f', data: [], fill: false, tension: 0.2 },
             { label: 'R1 − R2', borderColor: '#555', data: [], fill: false, borderDash: [4,4], tension: 0.2 }
           ]
         },
         options: {
           animation: false,
           scales: {
-            x: { title: { display: true, text: 'Zeit (s)' } },
+            x: { title: { display: true, text: 'Time (s)' } },
             y: { title: { display: true, text: 'cm' } }
-          }
-        }
-      });
-
-      const vibCtx = document.getElementById('vibrationChart').getContext('2d');
-      const vibChart = new Chart(vibCtx, {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [
-            { label: 'R1', borderColor: '#1976d2', data: [], fill: false },
-            { label: 'R2', borderColor: '#d32f2f', data: [], fill: false },
-            { label: 'R3', borderColor: '#2e7d32', data: [], fill: false }
-          ]
-        },
-        options: {
-          animation: false,
-          scales: {
-            x: { title: { display: true, text: 'Zeit (s)' } },
-            y: { title: { display: true, text: '°' }, min: -2, max: 2 }
           }
         }
       });
@@ -356,7 +369,7 @@ HTML_PAGE = '''
           case 4:         return { label: 'RTK Fix',    class: 'q-4' };
           case 5:         return { label: 'RTK Float',  class: 'q-5' };
           case 6:         return { label: 'Dead Reck.', class: 'q-6' };
-          default:        return { label: 'kein Fix',   class: 'q-0' };
+          default:        return { label: 'no Fix',     class: 'q-0' };
         }
       }
       function setQuality(id, value) {
@@ -370,15 +383,10 @@ HTML_PAGE = '''
         const s = v >= 0 ? '+' : '';
         return s + v.toFixed(decimals);
       }
-
-      // ---------- Boom-SVG-Update ----------
       function updateBoom(r1_cm, r2_cm) {
         const boomWidthCm = parseFloat(document.getElementById('boom_width_cm').value) || 1500;
-        // SVG-Halbbreite: ±90 entspricht der halben Gestängebreite
-        const halfWidth = boomWidthCm / 2;  // in cm
-        const scale = 90 / halfWidth;       // SVG-units pro cm
-        // R1 ist links = positiver Wert. Im SVG: links = negatives x.
-        // Position der Rover: x = -halfWidth*scale + abweichung*scale_im_svg
+        const halfWidth = boomWidthCm / 2;
+        const scale = 90 / halfWidth;
         const r1_svg_x = -90 + (r1_cm) * scale;
         const r2_svg_x = +90 + (r2_cm) * scale;
         document.getElementById('boom_r1').setAttribute('cx', r1_svg_x);
@@ -396,7 +404,6 @@ HTML_PAGE = '''
         fetch('/data').then(r => r.json()).then(d => {
           const t = ((Date.now() - startTime) / 1000).toFixed(1);
 
-          // Werte-Boxen
           document.getElementById('r1_lat').innerText   = fmtSigned(d.r1_lateral_cm);
           document.getElementById('r2_lat').innerText   = fmtSigned(d.r2_lateral_cm);
           document.getElementById('boom_total').innerText = fmtSigned(d.gestaenge_total_cm);
@@ -405,7 +412,6 @@ HTML_PAGE = '''
           document.getElementById('base_speed').innerText   = (d.base_speed || 0).toFixed(1);
           document.getElementById('runtime').innerText      = d.runtime;
 
-          // Pro-Rover Stats
           document.getElementById('r1_av').innerText = (d.r1_angular_velocity || 0).toFixed(2);
           document.getElementById('r2_av').innerText = (d.r2_angular_velocity || 0).toFixed(2);
           document.getElementById('r3_av').innerText = (d.r3_angular_velocity || 0).toFixed(2);
@@ -416,10 +422,8 @@ HTML_PAGE = '''
           setQuality('r2_q', d.r2_quality);
           setQuality('r3_q', d.r3_quality);
 
-          // Boom-Visualisierung
           updateBoom(d.r1_lateral_cm, d.r2_lateral_cm);
 
-          // Charts
           if (lateralChart.data.labels.length > CHART_MAX_POINTS) {
             lateralChart.data.labels.shift();
             lateralChart.data.datasets.forEach(ds => ds.data.shift());
@@ -429,17 +433,7 @@ HTML_PAGE = '''
           lateralChart.data.datasets[1].data.push(d.r2_lateral_cm);
           lateralChart.data.datasets[2].data.push(d.gestaenge_total_cm);
           lateralChart.update();
-
-          if (vibChart.data.labels.length > CHART_MAX_POINTS) {
-            vibChart.data.labels.shift();
-            vibChart.data.datasets.forEach(ds => ds.data.shift());
-          }
-          vibChart.data.labels.push(t);
-          vibChart.data.datasets[0].data.push(d.r1_vibration);
-          vibChart.data.datasets[1].data.push(d.r2_vibration);
-          vibChart.data.datasets[2].data.push(d.r3_vibration);
-          vibChart.update();
-        }).catch(err => console.warn('fetch fehler', err));
+        }).catch(err => console.warn('fetch error', err));
       }
       setInterval(fetchData, 200);
       {% endif %}
@@ -488,30 +482,33 @@ def stop():
     return redirect(url_for('index'))
 
 
+def _g(name, default=0):
+    """Defensive getter — manche gps-Globals existieren erst, wenn die Threads laufen."""
+    return getattr(gps, name, default)
+
+
 @app.route('/data')
 def data():
-    runtime = calculate_runtime()
+    r1_lat = float(_g('R1_lateral_offset_cm') or 0)
+    r2_lat = float(_g('R2_lateral_offset_cm') or 0)
+    q1 = _g('quality_rover1');  q2 = _g('quality_rover2');  q3 = _g('quality_rover3')
     return jsonify({
-        'runtime': runtime,
-        # Mittelachsen-Auswertung (Variante A)
-        'r1_lateral_cm':       round(float(gps.R1_lateral_offset_cm), 2),
-        'r2_lateral_cm':       round(float(gps.R2_lateral_offset_cm), 2),
-        'gestaenge_total_cm':  round(float(gps.R1_lateral_offset_cm - gps.R2_lateral_offset_cm), 2),
-        # Längsachse Base->R3
-        'axis_length_m':       round(float(gps.vehicle_axis_length_m), 3),
-        'axis_heading_deg':    round(float(gps.vehicle_heading_via_r3), 2),
-        # Pro Rover
-        'r1_quality':          gps.quality_rover1[0] if gps.quality_rover1 else 0,
-        'r2_quality':          gps.quality_rover2[0] if gps.quality_rover2 else 0,
-        'r3_quality':          gps.quality_rover3[0] if gps.quality_rover3 else 0,
-        'r1_angular_velocity': float(gps.R1_angular_velocity or 0),
-        'r2_angular_velocity': float(gps.R2_angular_velocity or 0),
-        'r3_angular_velocity': float(gps.R3_angular_velocity or 0),
-        'r1_vibration':        float(gps.current_vibration_rover1 or 0),
-        'r2_vibration':        float(gps.current_vibration_rover2 or 0),
-        'r3_vibration':        float(gps.current_vibration_rover3 or 0),
-        # Geschwindigkeit Base (km/h)
-        'base_speed':          float(gps.Base_Speed or 0),
+        'runtime':             calculate_runtime(),
+        'r1_lateral_cm':       round(r1_lat, 2),
+        'r2_lateral_cm':       round(r2_lat, 2),
+        'gestaenge_total_cm':  round(r1_lat - r2_lat, 2),
+        'axis_length_m':       round(float(_g('vehicle_axis_length_m') or 0), 3),
+        'axis_heading_deg':    round(float(_g('vehicle_heading_via_r3') or 0), 2),
+        'r1_quality':          (q1[0] if q1 else 0) if hasattr(q1, '__getitem__') else 0,
+        'r2_quality':          (q2[0] if q2 else 0) if hasattr(q2, '__getitem__') else 0,
+        'r3_quality':          (q3[0] if q3 else 0) if hasattr(q3, '__getitem__') else 0,
+        'r1_angular_velocity': float(_g('R1_angular_velocity') or 0),
+        'r2_angular_velocity': float(_g('R2_angular_velocity') or 0),
+        'r3_angular_velocity': float(_g('R3_angular_velocity') or 0),
+        'r1_vibration':        float(_g('current_vibration_rover1') or 0),
+        'r2_vibration':        float(_g('current_vibration_rover2') or 0),
+        'r3_vibration':        float(_g('current_vibration_rover3') or 0),
+        'base_speed':          float(_g('Base_Speed') or 0),
     })
 
 
