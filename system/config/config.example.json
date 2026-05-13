@@ -1,8 +1,12 @@
 {
-  "_comment": "Template. Kopiere zu config.json und setze die COM-Port-IDs deiner Hardware. Die echten IDs findest du mit: ls /dev/serial/by-id/",
-  "BASE_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<BASE-ID>-if00-port0",
-  "ROVER1_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<ROVER1-ID>-if00-port0",
-  "ROVER2_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<ROVER2-ID>-if00-port0",
-  "ROVER3_COM_PORT": "/dev/serial/by-id/usb-u-blox_AG_C099__ZED-F9P_<ROVER3-ID>-if00-port0",
+  "_comment_1": "Template. Kopiere zu config.json und passe die COM-Port-IDs an deine Hardware an.",
+  "_comment_2": "Default = kurze Namen aus udev-Regeln (siehe documentation/PI_SETUP.md fuer Setup).",
+  "_comment_3": "Ohne udev-Regeln: nutze die langen Standard-IDs aus 'ls /dev/serial/by-id/', z.B.:",
+  "_comment_4": "  /dev/serial/by-id/usb-u-blox_AG_ZED-F9P_<SERIENNR>-if00-port0",
+
+  "BASE_COM_PORT":   "/dev/serial/by-id/usb-B_B-if00",
+  "ROVER1_COM_PORT": "/dev/serial/by-id/usb-R_1-if00",
+  "ROVER2_COM_PORT": "/dev/serial/by-id/usb-R_2-if00",
+  "ROVER3_COM_PORT": "/dev/serial/by-id/usb-R_3-if00",
   "LIVE_PLOT": true
 }
