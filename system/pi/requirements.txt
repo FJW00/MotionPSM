@@ -1,0 +1,9 @@
+# MotionPSM — Python-Abhängigkeiten für den Pi
+# Install: pip install -r system/pi/requirements.txt (in venv)
+
+flask>=2.0
+pyserial>=3.5
+pyubx2>=1.2
+pyproj>=3.0
+numpy>=1.20
+geopy>=2.0
