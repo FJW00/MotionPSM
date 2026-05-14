@@ -42,10 +42,12 @@ quality_rover3 = 0
 R3_angular_velocity = 0
 
 # Ergebnisse Mittelachsen-Auswertung (für Live-Server)
-R1_lateral_offset_cm = 0   # Variante A: Querauslenkung R1 von Längsachse (signed)
-R2_lateral_offset_cm = 0   # Variante A: Querauslenkung R2 von Längsachse (signed)
-vehicle_axis_length_m = 0  # Länge Base->R3 in m
-vehicle_heading_via_r3 = 0 # Maschinen-Heading aus R3 statt aus Base-Bewegung
+R1_lateral_offset_cm = 0       # Variante A: senkrechter Abstand R1 zur Längsachse (≈ Gestängehalbe, links=+)
+R2_lateral_offset_cm = 0       # Variante A: senkrechter Abstand R2 zur Längsachse (rechts=−)
+R1_longitudinal_offset_cm = 0  # SCHWINGUNGS-METRIK: Vor-/Rück-Auslenkung R1 (+ = vorne in Fahrtrichtung)
+R2_longitudinal_offset_cm = 0  # SCHWINGUNGS-METRIK: Vor-/Rück-Auslenkung R2 (+ = vorne in Fahrtrichtung)
+vehicle_axis_length_m = 0      # Länge Base->R3 in m
+vehicle_heading_via_r3 = 0     # Maschinen-Heading aus R3 statt aus Base-Bewegung
 
 #-------Globale Variablen für Base und Rover--------
 B_Time = queue.Queue()
@@ -651,6 +653,7 @@ def csv_logger_thread_buffered():
         tolerance_base:  max. erlaubte Abweichung Base von Rover-Mittel
     """
     global R1_lateral_offset_cm, R2_lateral_offset_cm
+    global R1_longitudinal_offset_cm, R2_longitudinal_offset_cm
     global vehicle_axis_length_m, vehicle_heading_via_r3
 
     print("[Logger] Thread gestartet (3 Rover + Base)")
@@ -712,6 +715,8 @@ def csv_logger_thread_buffered():
             # Globale Werte für den Live-Server
             R1_lateral_offset_cm = lat_r1_cm if lat_r1_cm is not None else 0
             R2_lateral_offset_cm = lat_r2_cm if lat_r2_cm is not None else 0
+            R1_longitudinal_offset_cm = lon_r1_cm if lon_r1_cm is not None else 0
+            R2_longitudinal_offset_cm = lon_r2_cm if lon_r2_cm is not None else 0
             vehicle_axis_length_m = a_len if a_len is not None else 0
             vehicle_heading_via_r3 = axis_heading if axis_heading is not None else 0
 

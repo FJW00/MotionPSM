@@ -258,14 +258,6 @@ HTML_PAGE = '''
       <div class="brand-right">Real Time Monitor</div>
     </div>
 
-    <!-- Settings-Bar (immer sichtbar, auch wenn Messung gestoppt) -->
-    <div class="settings-bar">
-      <label for="boom_width_cm">Boom Width:</label>
-      <input type="number" id="boom_width_cm" step="100" min="500" max="5000">
-      <span style="font-size:13px;color:#666;">cm</span>
-      <span class="hint">used for live visualization · saved automatically</span>
-    </div>
-
     {% if running %}
       <div class="runtime">Measurement running for <span id="runtime">0</span> s</div>
       <div class="controls">
@@ -273,47 +265,89 @@ HTML_PAGE = '''
         <a href="{{ url_for('stop') }}"><button>Stop Measurement</button></a>
       </div>
 
-      <!-- Hero -->
+      <!-- Hero — Boom Motion (longitudinal = Schwingungs-Hauptmetrik) -->
       <div class="boom-hero">
         <div class="boom-header">
-          <h2>Current Boom Deflection</h2>
+          <h2>Boom Motion — Longitudinal Deflection</h2>
+          <div style="font-size:12px;color:#888;">
+            + = forward (in driving direction) &nbsp;&middot;&nbsp; − = backward
+          </div>
         </div>
 
         <div class="boom-svg-wrap">
-          <svg id="boom_svg" viewBox="-110 -40 220 80" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;">
-            <!-- Center axis -->
-            <line x1="0" y1="-35" x2="0" y2="35" stroke="#bbb" stroke-dasharray="3,3" stroke-width="0.5"/>
-            <text x="0" y="-37" text-anchor="middle" font-size="4" fill="#888">Center Axis</text>
-            <!-- Target boom line -->
-            <line x1="-90" y1="0" x2="90" y2="0" stroke="#ccc" stroke-width="1.5" stroke-dasharray="2,2"/>
-            <!-- Actual boom: R1 -> mid -> R2 -->
-            <line id="boom_istline_l" x1="-90" y1="0" x2="0" y2="0" stroke="#1976d2" stroke-width="2"/>
-            <line id="boom_istline_r" x1="0" y1="0" x2="90" y2="0" stroke="#d32f2f" stroke-width="2"/>
-            <!-- Rover markers (R1 left, R2 right) -->
+          <!-- Top-Down View. Schlepper fährt nach oben. R1 wandert vertikal um Sollposition. -->
+          <svg id="boom_svg" viewBox="-110 -60 220 120" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;">
+            <!-- Direction of Travel: Pfeil oben Mitte -->
+            <text x="0" y="-52" text-anchor="middle" font-size="3.6" fill="#666" font-style="italic">Direction of Travel</text>
+            <path d="M 0 -50 L -2 -46 L 0 -47 L 2 -46 Z" fill="#666"/>
+            <line x1="0" y1="-47" x2="0" y2="-30" stroke="#aaa" stroke-width="0.4" stroke-dasharray="2,2"/>
+
+            <!-- Längsachse Base->R3 (vertikal, dünn gestrichelt) -->
+            <line x1="0" y1="-30" x2="0" y2="30" stroke="#ddd" stroke-dasharray="2,2" stroke-width="0.4"/>
+
+            <!-- R3 oben (klein, transparent) -->
+            <circle cx="0" cy="-25" r="2.2" fill="#2e7d32" fill-opacity="0.5"/>
+            <text x="4" y="-23" font-size="3.5" fill="#2e7d32" opacity="0.7">R3</text>
+
+            <!-- Base in der Mitte -->
+            <circle cx="0" cy="0" r="2.5" fill="#444"/>
+            <text x="4" y="2" font-size="3.5" fill="#444">Base</text>
+
+            <!-- Soll-Gestänge (horizontale Linie durch Base) -->
+            <line x1="-90" y1="0" x2="90" y2="0" stroke="#ccc" stroke-width="1" stroke-dasharray="2,2"/>
+
+            <!-- Soll-Marker R1/R2 (grau, halbtransparent, fix bei y=0) -->
+            <circle id="boom_r1_soll" cx="-90" cy="0" r="2" fill="#bbb" fill-opacity="0.5"/>
+            <circle id="boom_r2_soll" cx="90" cy="0" r="2" fill="#bbb" fill-opacity="0.5"/>
+
+            <!-- Ist-Gestänge: R1 — Base — R2 (zeigt geknicktes Gestänge bei Schwingung) -->
+            <line id="boom_istline_l" x1="-90" y1="0" x2="0" y2="0" stroke="#1976d2" stroke-width="1.6" stroke-opacity="0.7"/>
+            <line id="boom_istline_r" x1="0" y1="0" x2="90" y2="0" stroke="#d32f2f" stroke-width="1.6" stroke-opacity="0.7"/>
+
+            <!-- Ist-Marker R1/R2 (wandern vertikal) -->
             <circle id="boom_r1" cx="-90" cy="0" r="3.5" fill="#1976d2"/>
             <circle id="boom_r2" cx="90" cy="0" r="3.5" fill="#d32f2f"/>
-            <text id="boom_r1_label" x="-90" y="-8" text-anchor="middle" font-size="5" fill="#1976d2" font-weight="600">R1</text>
-            <text id="boom_r2_label" x="90" y="-8" text-anchor="middle" font-size="5" fill="#d32f2f" font-weight="600">R2</text>
-            <!-- Direction of Travel label (oberhalb von R3, abgesetzt) -->
-            <text x="0" y="-29" text-anchor="middle" font-size="3.2" fill="#888" font-style="italic">Direction of Travel</text>
-            <!-- R3 (vorne, transparent, dicht am Gestänge) -->
-            <circle id="boom_r3" cx="0" cy="-12" r="3" fill="#2e7d32" fill-opacity="0.45"/>
-            <text x="0" y="-16" text-anchor="middle" font-size="4.5" fill="#2e7d32" font-weight="600" opacity="0.7">R3</text>
+            <text id="boom_r1_label" x="-90" y="-6" text-anchor="middle" font-size="5" fill="#1976d2" font-weight="600">R1</text>
+            <text id="boom_r2_label" x="90" y="-6" text-anchor="middle" font-size="5" fill="#d32f2f" font-weight="600">R2</text>
+
+            <!-- Y-Skala-Anzeige rechts (dynamisch beschriftet via JS) -->
+            <line x1="100" y1="-30" x2="100" y2="30" stroke="#999" stroke-width="0.3"/>
+            <line x1="98" y1="-30" x2="102" y2="-30" stroke="#999" stroke-width="0.3"/>
+            <line x1="98" y1="0" x2="102" y2="0" stroke="#999" stroke-width="0.3"/>
+            <line x1="98" y1="30" x2="102" y2="30" stroke="#999" stroke-width="0.3"/>
+            <text id="scale_top"  x="103" y="-29" font-size="3" fill="#999">+0 cm</text>
+            <text x="103" y="1" font-size="3" fill="#999">0</text>
+            <text id="scale_bot"  x="103" y="31" font-size="3" fill="#999">−0 cm</text>
           </svg>
         </div>
 
         <div class="boom-values">
           <div class="value-box r1">
             <div class="label">R1 (left)</div>
-            <div class="value"><span id="r1_lat">+0.0</span> <span class="unit">cm</span></div>
+            <div class="value"><span id="r1_long">+0.0</span> <span class="unit">cm</span></div>
           </div>
           <div class="value-box delta">
-            <div class="label">Total Difference R1 − R2</div>
-            <div class="value"><span id="boom_total">0.0</span> <span class="unit">cm</span></div>
+            <div class="label">Symmetric Yaw &nbsp;<span style="font-weight:400;font-size:11px;">(boom rotation)</span></div>
+            <div class="value"><span id="sym_yaw">0.0</span> <span class="unit">cm</span></div>
           </div>
           <div class="value-box r2">
             <div class="label">R2 (right)</div>
-            <div class="value"><span id="r2_lat">-0.0</span> <span class="unit">cm</span></div>
+            <div class="value"><span id="r2_long">-0.0</span> <span class="unit">cm</span></div>
+          </div>
+        </div>
+
+        <div class="boom-values" style="margin-top:8px;">
+          <div class="value-box" style="background:#f7f7f7;">
+            <div class="label">R1 Angle to Baseline</div>
+            <div class="value" style="font-size:24px;color:#1976d2;"><span id="r1_angle">0.00</span> <span class="unit">°</span></div>
+          </div>
+          <div class="value-box" style="background:#f7f7f7;">
+            <div class="label">Asymmetric Yaw &nbsp;<span style="font-weight:400;font-size:11px;">(boom shift fore/aft)</span></div>
+            <div class="value" style="font-size:24px;color:#666;"><span id="asym_yaw">0.0</span> <span class="unit">cm</span></div>
+          </div>
+          <div class="value-box" style="background:#f7f7f7;">
+            <div class="label">R2 Angle to Baseline</div>
+            <div class="value" style="font-size:24px;color:#d32f2f;"><span id="r2_angle">0.00</span> <span class="unit">°</span></div>
           </div>
         </div>
       </div>
@@ -348,18 +382,19 @@ HTML_PAGE = '''
           </div>
         </div>
         <div class="axis-info">
-          <h3>Vehicle Longitudinal Axis (Base → R3)</h3>
-          <div class="row"><span>Axis Length:</span><span class="v"><span id="axis_length">0.00</span> m</span></div>
-          <div class="row"><span>Heading:</span><span class="v"><span id="axis_heading">0.0</span>°</span></div>
+          <h3>Geometry &amp; Speed</h3>
+          <div class="row"><span>Axis Length (Base → R3):</span><span class="v"><span id="axis_length">0.00</span> m</span></div>
+          <div class="row"><span>Vehicle Heading:</span><span class="v"><span id="axis_heading">0.0</span>°</span></div>
+          <div class="row"><span>Detected Boom Width:</span><span class="v"><span id="boom_width">0.00</span> m</span></div>
           <div class="row"><span>Vehicle Speed:</span><span class="v"><span id="base_speed">0.0</span> km/h</span></div>
         </div>
       </div>
 
-      <!-- Single chart: Deflection history -->
+      <!-- Single chart: Longitudinal (Schwingungs-) History -->
       <div class="chart-row">
         <div class="chart-card">
-          <h3>Deflection History — R1 / R2 (cm)</h3>
-          <canvas id="lateralChart" width="500" height="280"></canvas>
+          <h3>Longitudinal Deflection History — R1 / R2 / Sym. Yaw (cm)</h3>
+          <canvas id="longChart" width="500" height="280"></canvas>
         </div>
       </div>
 
@@ -371,49 +406,25 @@ HTML_PAGE = '''
     {% endif %}
 
     <script>
-      // ----- Boom Width Persistenz (immer aktiv, auch wenn Messung gestoppt) -----
-      const BOOM_WIDTH_DEFAULT = 1500;
-      const BOOM_WIDTH_KEY = 'motionpsm_boom_width_cm';
-
-      function loadBoomWidth() {
-        const saved = parseFloat(localStorage.getItem(BOOM_WIDTH_KEY));
-        return (saved && !isNaN(saved)) ? saved : BOOM_WIDTH_DEFAULT;
-      }
-      function saveBoomWidth(v) {
-        localStorage.setItem(BOOM_WIDTH_KEY, String(v));
-      }
-      // Initial-Werte setzen sobald DOM bereit
-      (function initBoomWidth() {
-        const inp = document.getElementById('boom_width_cm');
-        if (!inp) return;
-        inp.value = loadBoomWidth();
-        inp.addEventListener('change', () => {
-          const v = parseFloat(inp.value) || BOOM_WIDTH_DEFAULT;
-          saveBoomWidth(v);
-        });
-        inp.addEventListener('input', () => {
-          const v = parseFloat(inp.value);
-          if (v && !isNaN(v)) saveBoomWidth(v);
-        });
-      })();
+      // Boom-Width wird nicht mehr als Eingabe gebraucht — Skalierung läuft dynamisch über die gemessenen lateral-Werte.
 
       {% if running %}
-      const lateralCtx = document.getElementById('lateralChart').getContext('2d');
-      const lateralChart = new Chart(lateralCtx, {
+      const longCtx = document.getElementById('longChart').getContext('2d');
+      const longChart = new Chart(longCtx, {
         type: 'line',
         data: {
           labels: [],
           datasets: [
-            { label: 'R1 (left)', borderColor: '#1976d2', data: [], fill: false, tension: 0.2 },
-            { label: 'R2 (right)', borderColor: '#d32f2f', data: [], fill: false, tension: 0.2 },
-            { label: 'R1 − R2', borderColor: '#555', data: [], fill: false, borderDash: [4,4], tension: 0.2 }
+            { label: 'R1 longitudinal',  borderColor: '#1976d2', data: [], fill: false, tension: 0.2 },
+            { label: 'R2 longitudinal',  borderColor: '#d32f2f', data: [], fill: false, tension: 0.2 },
+            { label: 'Symmetric Yaw',    borderColor: '#555',    data: [], fill: false, borderDash: [4,4], tension: 0.2 }
           ]
         },
         options: {
           animation: false,
           scales: {
             x: { title: { display: true, text: 'Time (s)' } },
-            y: { title: { display: true, text: 'cm' } }
+            y: { title: { display: true, text: 'cm  (+ forward, − backward)' } }
           }
         }
       });
@@ -438,18 +449,44 @@ HTML_PAGE = '''
         const s = v >= 0 ? '+' : '';
         return s + v.toFixed(decimals);
       }
-      function updateBoom(r1_cm, r2_cm) {
-        const boomWidthCm = parseFloat(document.getElementById('boom_width_cm').value) || BOOM_WIDTH_DEFAULT;
-        const halfWidth = boomWidthCm / 2;
-        const scale = 90 / halfWidth;
-        const r1_svg_x = -90 + (r1_cm) * scale;
-        const r2_svg_x = +90 + (r2_cm) * scale;
-        document.getElementById('boom_r1').setAttribute('cx', r1_svg_x);
-        document.getElementById('boom_r2').setAttribute('cx', r2_svg_x);
-        document.getElementById('boom_r1_label').setAttribute('x', r1_svg_x);
-        document.getElementById('boom_r2_label').setAttribute('x', r2_svg_x);
-        document.getElementById('boom_istline_l').setAttribute('x1', r1_svg_x);
-        document.getElementById('boom_istline_r').setAttribute('x2', r2_svg_x);
+      // Top-Down-View: R1 und R2 sitzen seitlich (x ≈ konstant), schwingen vertikal (y) mit der longitudinal-Komponente.
+      // x-Position wird aus lateral_cm dynamisch berechnet (auto-Skalierung).
+      // y-Position aus longitudinal_cm mit dynamischer Skala (mind. ±30 cm).
+      function updateBoom(r1_long_cm, r2_long_cm, r1_lat_cm, r2_lat_cm) {
+        // X-Skalierung: SVG-Breite ±90, fits to physical lateral.
+        // lateral_r1 ist positiv (links), lateral_r2 ist negativ (rechts).
+        const maxLat = Math.max(Math.abs(r1_lat_cm), Math.abs(r2_lat_cm), 50);
+        const xScale = 90 / maxLat;
+        // R1 (lat > 0, links) → SVG-x negativ. R2 (lat < 0, rechts) → SVG-x positiv.
+        const r1_x = -r1_lat_cm * xScale;
+        const r2_x = -r2_lat_cm * xScale;
+
+        // Y-Skalierung: dynamisch, min ±30 cm.
+        const maxLong = Math.max(Math.abs(r1_long_cm), Math.abs(r2_long_cm), 30);
+        const yRange = 30;  // SVG-units von y=0 zu y=±30 (top/bot)
+        const yScale = yRange / maxLong;
+        // longitudinal > 0 = nach vorne = nach OBEN = negativer SVG-y
+        const r1_y = -r1_long_cm * yScale;
+        const r2_y = -r2_long_cm * yScale;
+
+        document.getElementById('boom_r1').setAttribute('cx', r1_x);
+        document.getElementById('boom_r1').setAttribute('cy', r1_y);
+        document.getElementById('boom_r2').setAttribute('cx', r2_x);
+        document.getElementById('boom_r2').setAttribute('cy', r2_y);
+        document.getElementById('boom_r1_label').setAttribute('x', r1_x);
+        document.getElementById('boom_r1_label').setAttribute('y', r1_y - 5);
+        document.getElementById('boom_r2_label').setAttribute('x', r2_x);
+        document.getElementById('boom_r2_label').setAttribute('y', r2_y - 5);
+        document.getElementById('boom_r1_soll').setAttribute('cx', r1_x);
+        document.getElementById('boom_r2_soll').setAttribute('cx', r2_x);
+        document.getElementById('boom_istline_l').setAttribute('x1', r1_x);
+        document.getElementById('boom_istline_l').setAttribute('y1', r1_y);
+        document.getElementById('boom_istline_r').setAttribute('x2', r2_x);
+        document.getElementById('boom_istline_r').setAttribute('y2', r2_y);
+
+        // Skala-Beschriftung
+        document.getElementById('scale_top').textContent = '+' + maxLong.toFixed(0) + ' cm';
+        document.getElementById('scale_bot').textContent = '−' + maxLong.toFixed(0) + ' cm';
       }
 
       let startTime = Date.now();
@@ -459,14 +496,24 @@ HTML_PAGE = '''
         fetch('/data').then(r => r.json()).then(d => {
           const t = ((Date.now() - startTime) / 1000).toFixed(1);
 
-          document.getElementById('r1_lat').innerText   = fmtSigned(d.r1_lateral_cm);
-          document.getElementById('r2_lat').innerText   = fmtSigned(d.r2_lateral_cm);
-          document.getElementById('boom_total').innerText = fmtSigned(d.gestaenge_total_cm);
+          // Hauptmetriken — Schwingung
+          document.getElementById('r1_long').innerText  = fmtSigned(d.r1_longitudinal_cm);
+          document.getElementById('r2_long').innerText  = fmtSigned(d.r2_longitudinal_cm);
+          document.getElementById('sym_yaw').innerText  = fmtSigned(d.symmetric_yaw_cm);
+          document.getElementById('asym_yaw').innerText = fmtSigned(d.asymmetric_yaw_cm);
+          document.getElementById('r1_angle').innerText = fmtSigned(d.r1_angle_deg, 2);
+          document.getElementById('r2_angle').innerText = fmtSigned(d.r2_angle_deg, 2);
+
+          // Geometrie + Speed
           document.getElementById('axis_length').innerText  = (d.axis_length_m || 0).toFixed(2);
           document.getElementById('axis_heading').innerText = (d.axis_heading_deg || 0).toFixed(1);
           document.getElementById('base_speed').innerText   = (d.base_speed || 0).toFixed(1);
           document.getElementById('runtime').innerText      = d.runtime;
+          // Detected Boom Width = lateral_r1 - lateral_r2 (in m)
+          const boomWidth = ((d.r1_lateral_cm || 0) - (d.r2_lateral_cm || 0)) / 100;
+          document.getElementById('boom_width').innerText = boomWidth.toFixed(2);
 
+          // Quality / pro Rover
           document.getElementById('r1_av').innerText = (d.r1_angular_velocity || 0).toFixed(2);
           document.getElementById('r2_av').innerText = (d.r2_angular_velocity || 0).toFixed(2);
           document.getElementById('r3_av').innerText = (d.r3_angular_velocity || 0).toFixed(2);
@@ -477,17 +524,19 @@ HTML_PAGE = '''
           setQuality('r2_q', d.r2_quality);
           setQuality('r3_q', d.r3_quality);
 
-          updateBoom(d.r1_lateral_cm, d.r2_lateral_cm);
+          // SVG: Marker wandern vertikal mit longitudinal
+          updateBoom(d.r1_longitudinal_cm, d.r2_longitudinal_cm, d.r1_lateral_cm, d.r2_lateral_cm);
 
-          if (lateralChart.data.labels.length > CHART_MAX_POINTS) {
-            lateralChart.data.labels.shift();
-            lateralChart.data.datasets.forEach(ds => ds.data.shift());
+          // Chart: longitudinal-Verlauf
+          if (longChart.data.labels.length > CHART_MAX_POINTS) {
+            longChart.data.labels.shift();
+            longChart.data.datasets.forEach(ds => ds.data.shift());
           }
-          lateralChart.data.labels.push(t);
-          lateralChart.data.datasets[0].data.push(d.r1_lateral_cm);
-          lateralChart.data.datasets[1].data.push(d.r2_lateral_cm);
-          lateralChart.data.datasets[2].data.push(d.gestaenge_total_cm);
-          lateralChart.update();
+          longChart.data.labels.push(t);
+          longChart.data.datasets[0].data.push(d.r1_longitudinal_cm);
+          longChart.data.datasets[1].data.push(d.r2_longitudinal_cm);
+          longChart.data.datasets[2].data.push(d.symmetric_yaw_cm);
+          longChart.update();
         }).catch(err => console.warn('fetch error', err));
       }
       setInterval(fetchData, 200);
@@ -544,11 +593,39 @@ def _g(name, default=0):
 
 @app.route('/data')
 def data():
-    r1_lat = float(_g('R1_lateral_offset_cm') or 0)
-    r2_lat = float(_g('R2_lateral_offset_cm') or 0)
+    from math import degrees, atan2, sqrt
+    r1_lat  = float(_g('R1_lateral_offset_cm') or 0)
+    r2_lat  = float(_g('R2_lateral_offset_cm') or 0)
+    r1_long = float(_g('R1_longitudinal_offset_cm') or 0)
+    r2_long = float(_g('R2_longitudinal_offset_cm') or 0)
+
+    # Gieren-Komponenten (nach Falks GeoGebra-Notation)
+    symmetric_yaw_cm  = (r2_long - r1_long) / 2.0  # Gestänge dreht um Mittelpunkt
+    asymmetric_yaw_cm = (r1_long + r2_long) / 2.0  # Gestänge wandert gesamt vor/zurück
+
+    # Hebellänge je Rover = Abstand zur Baseline (für Winkel-Berechnung)
+    r1_arm = abs(r1_lat) if r1_lat else 1.0  # avoid div-by-0
+    r2_arm = abs(r2_lat) if r2_lat else 1.0
+    # Winkel zwischen "R1-zur-Baseline-Senkrechten" und "Vektor Base->R1" (in °)
+    # Vereinfacht: asin(longitudinal / arm) wenn Werte plausibel
+    def safe_angle_deg(long_cm, arm_cm):
+        if arm_cm < 1 or abs(long_cm) > arm_cm: return 0.0
+        from math import asin
+        return degrees(asin(long_cm / arm_cm))
+    r1_angle_deg = safe_angle_deg(r1_long, r1_arm)
+    r2_angle_deg = safe_angle_deg(r2_long, r2_arm)
+
     q1 = _g('quality_rover1');  q2 = _g('quality_rover2');  q3 = _g('quality_rover3')
     return jsonify({
         'runtime':             calculate_runtime(),
+        # Hauptmetriken — die Schwingung
+        'r1_longitudinal_cm':  round(r1_long, 2),
+        'r2_longitudinal_cm':  round(r2_long, 2),
+        'symmetric_yaw_cm':    round(symmetric_yaw_cm, 2),
+        'asymmetric_yaw_cm':   round(asymmetric_yaw_cm, 2),
+        'r1_angle_deg':        round(r1_angle_deg, 2),
+        'r2_angle_deg':        round(r2_angle_deg, 2),
+        # Geometrie (für SVG-Skalierung)
         'r1_lateral_cm':       round(r1_lat, 2),
         'r2_lateral_cm':       round(r2_lat, 2),
         'gestaenge_total_cm':  round(r1_lat - r2_lat, 2),
