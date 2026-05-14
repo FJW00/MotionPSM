@@ -45,14 +45,20 @@ HTML_PAGE = '''
         color: #222;
       }
 
-      /* ---------- Brand Header (Logo links + Schriftzug) ---------- */
+      /* ---------- Brand Header (Logo + FJW Systems links, Real Time Monitor rechts) ---------- */
       .brand-header {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 14px;
         max-width: 1100px;
-        margin: 0 auto 16px;
+        margin: 0 auto 20px;
         padding: 4px 0;
+      }
+      .brand-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
       .brand-logo {
         height: 56px;
@@ -61,21 +67,39 @@ HTML_PAGE = '''
       .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
       .brand-name { font-size: 28px; font-weight: 700; color: var(--col-brand); letter-spacing: 0.2px; }
       .brand-tagline { font-size: 12px; color: #888; font-weight: 400; margin-top: 3px; letter-spacing: 0.4px; text-transform: uppercase; }
-
-      /* ---------- Titel + Untertitel (zentriert, größer) ---------- */
-      h1 {
-        text-align: center;
-        margin: 24px 0 8px;
-        font-size: 32px;
-        font-weight: 600;
-        color: #222;
+      .brand-right {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--col-brand);
+        letter-spacing: 0.2px;
       }
-      .subtitle {
-        text-align: center;
-        color: #666;
-        margin: 0 0 24px;
-        font-size: 16px;
-        font-weight: 400;
+
+      /* ---------- Settings-Bar (Boom Width, immer sichtbar) ---------- */
+      .settings-bar {
+        max-width: 1100px;
+        margin: 0 auto 16px;
+        padding: 12px 18px;
+        background: var(--col-card);
+        border: 1px solid var(--col-border);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .settings-bar label { font-size: 13px; font-weight: 500; color: #444; }
+      .settings-bar input {
+        width: 100px;
+        padding: 6px 8px;
+        font-size: 14px;
+        border: 1px solid var(--col-border);
+        border-radius: 6px;
+        font-family: inherit;
+      }
+      .settings-bar .hint {
+        font-size: 12px;
+        color: #999;
+        margin-left: auto;
       }
 
       /* ---------- Controls ---------- */
@@ -210,10 +234,10 @@ HTML_PAGE = '''
 
       /* ---------- Mobile ---------- */
       @media (max-width: 800px) {
+        .brand-header { flex-direction: column; align-items: flex-start; }
         .brand-logo { height: 44px; }
         .brand-name { font-size: 22px; }
-        h1 { font-size: 24px; }
-        .subtitle { font-size: 14px; }
+        .brand-right { font-size: 22px; }
         .boom-header h2 { font-size: 18px; }
         .boom-values { grid-template-columns: 1fr; }
         .secondary-grid { grid-template-columns: 1fr; }
@@ -222,17 +246,25 @@ HTML_PAGE = '''
   </head>
   <body>
 
-    <!-- Brand Header: Logo + FJW Systems -->
+    <!-- Brand Header: Logo + FJW Systems links, Real Time Monitor rechts -->
     <div class="brand-header">
-      <img src="{{ url_for('static', filename='logo_fjw.png') }}" alt="FJW Logo" class="brand-logo">
-      <div class="brand-text">
-        <div class="brand-name">FJW Systems</div>
-        <div class="brand-tagline">MotionPSM &middot; Boom Motion Measurement</div>
+      <div class="brand-left">
+        <img src="{{ url_for('static', filename='logo_fjw.png') }}" alt="FJW Logo" class="brand-logo">
+        <div class="brand-text">
+          <div class="brand-name">FJW Systems</div>
+          <div class="brand-tagline">MotionPSM</div>
+        </div>
       </div>
+      <div class="brand-right">Real Time Monitor</div>
     </div>
 
-    <h1>Boom Motion Measurement</h1>
-    <div class="subtitle">Real-Time Monitor</div>
+    <!-- Settings-Bar (immer sichtbar, auch wenn Messung gestoppt) -->
+    <div class="settings-bar">
+      <label for="boom_width_cm">Boom Width:</label>
+      <input type="number" id="boom_width_cm" step="100" min="500" max="5000">
+      <span style="font-size:13px;color:#666;">cm</span>
+      <span class="hint">used for live visualization · saved automatically</span>
+    </div>
 
     {% if running %}
       <div class="runtime">Measurement running for <span id="runtime">0</span> s</div>
@@ -245,10 +277,6 @@ HTML_PAGE = '''
       <div class="boom-hero">
         <div class="boom-header">
           <h2>Current Boom Deflection</h2>
-          <div class="boom-config">
-            <label for="boom_width_cm">Boom Width (cm):</label>
-            <input type="number" id="boom_width_cm" value="1500" step="100" min="500" max="5000">
-          </div>
         </div>
 
         <div class="boom-svg-wrap">
@@ -266,10 +294,11 @@ HTML_PAGE = '''
             <circle id="boom_r2" cx="90" cy="0" r="3.5" fill="#d32f2f"/>
             <text id="boom_r1_label" x="-90" y="-8" text-anchor="middle" font-size="5" fill="#1976d2" font-weight="600">R1</text>
             <text id="boom_r2_label" x="90" y="-8" text-anchor="middle" font-size="5" fill="#d32f2f" font-weight="600">R2</text>
+            <!-- Direction of Travel label (oberhalb von R3, abgesetzt) -->
+            <text x="0" y="-29" text-anchor="middle" font-size="3.2" fill="#888" font-style="italic">Direction of Travel</text>
             <!-- R3 (vorne, transparent, dicht am Gestänge) -->
             <circle id="boom_r3" cx="0" cy="-12" r="3" fill="#2e7d32" fill-opacity="0.45"/>
             <text x="0" y="-16" text-anchor="middle" font-size="4.5" fill="#2e7d32" font-weight="600" opacity="0.7">R3</text>
-            <text x="0" y="-19" text-anchor="middle" font-size="2.8" fill="#999" font-style="italic">Direction of Travel</text>
           </svg>
         </div>
 
@@ -342,6 +371,32 @@ HTML_PAGE = '''
     {% endif %}
 
     <script>
+      // ----- Boom Width Persistenz (immer aktiv, auch wenn Messung gestoppt) -----
+      const BOOM_WIDTH_DEFAULT = 1500;
+      const BOOM_WIDTH_KEY = 'motionpsm_boom_width_cm';
+
+      function loadBoomWidth() {
+        const saved = parseFloat(localStorage.getItem(BOOM_WIDTH_KEY));
+        return (saved && !isNaN(saved)) ? saved : BOOM_WIDTH_DEFAULT;
+      }
+      function saveBoomWidth(v) {
+        localStorage.setItem(BOOM_WIDTH_KEY, String(v));
+      }
+      // Initial-Werte setzen sobald DOM bereit
+      (function initBoomWidth() {
+        const inp = document.getElementById('boom_width_cm');
+        if (!inp) return;
+        inp.value = loadBoomWidth();
+        inp.addEventListener('change', () => {
+          const v = parseFloat(inp.value) || BOOM_WIDTH_DEFAULT;
+          saveBoomWidth(v);
+        });
+        inp.addEventListener('input', () => {
+          const v = parseFloat(inp.value);
+          if (v && !isNaN(v)) saveBoomWidth(v);
+        });
+      })();
+
       {% if running %}
       const lateralCtx = document.getElementById('lateralChart').getContext('2d');
       const lateralChart = new Chart(lateralCtx, {
@@ -384,7 +439,7 @@ HTML_PAGE = '''
         return s + v.toFixed(decimals);
       }
       function updateBoom(r1_cm, r2_cm) {
-        const boomWidthCm = parseFloat(document.getElementById('boom_width_cm').value) || 1500;
+        const boomWidthCm = parseFloat(document.getElementById('boom_width_cm').value) || BOOM_WIDTH_DEFAULT;
         const halfWidth = boomWidthCm / 2;
         const scale = 90 / halfWidth;
         const r1_svg_x = -90 + (r1_cm) * scale;
