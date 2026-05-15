@@ -235,9 +235,11 @@ def Rover1_Thread():
                 R_1_Time.queue.clear()
                 R_1_Time.put(Rover_time)              
                 Rover_accHeading = parsed_data.accHeading
-                Rover_N = parsed_data.relPosN + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)
-                Rover_E = parsed_data.relPosE + (getattr(parsed_data, 'relPosHPE', 0) * 1e-2)
-                Rover_D = parsed_data.relPosD + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)
+                # u-blox NAV-RELPOSNED: relPosN/E/D in cm (raw int), relPosHPN/E/D in 0.1 mm.
+                # Gesamtposition in Metern: (cm-Wert + HPN * 0.01_cm) * 0.01 = m
+                Rover_N = ((parsed_data.relPosN or 0) + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)) * 1e-2
+                Rover_E = ((parsed_data.relPosE or 0) + (getattr(parsed_data, 'relPosHPE', 0) * 1e-2)) * 1e-2
+                Rover_D = ((parsed_data.relPosD or 0) + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)) * 1e-2
                 # Snapshot für Mittelachsen-Berechnung im Logger
                 last_relNED_r1 = (Rover_N, Rover_E, Rover_D)
                 #rel_heading = (parsed_data.relPosHeading * 1e-5)
@@ -403,9 +405,11 @@ def Rover2_Thread():
                 R_2_Time.queue.clear()
                 R_2_Time.put(Rover_time)
                 Rover_accHeading = parsed_data.accHeading
-                Rover_N = parsed_data.relPosN + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)
-                Rover_E = parsed_data.relPosE + (getattr(parsed_data, 'relPosHPE', 0) * 1e-2)
-                Rover_D = parsed_data.relPosD + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)
+                # u-blox NAV-RELPOSNED: relPosN/E/D in cm (raw int), relPosHPN/E/D in 0.1 mm.
+                # Gesamtposition in Metern: (cm-Wert + HPN * 0.01_cm) * 0.01 = m
+                Rover_N = ((parsed_data.relPosN or 0) + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)) * 1e-2
+                Rover_E = ((parsed_data.relPosE or 0) + (getattr(parsed_data, 'relPosHPE', 0) * 1e-2)) * 1e-2
+                Rover_D = ((parsed_data.relPosD or 0) + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)) * 1e-2
                 # Snapshot für Mittelachsen-Berechnung im Logger
                 last_relNED_r2 = (Rover_N, Rover_E, Rover_D)
                 #rel_heading = (parsed_data.relPosHeading * 1e-5)
@@ -551,9 +555,11 @@ def Rover3_Thread():
                 R_3_Time.queue.clear()
                 R_3_Time.put(Rover_time)
                 Rover_accHeading = parsed_data.accHeading
-                Rover_N = parsed_data.relPosN + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)
-                Rover_E = parsed_data.relPosE + (getattr(parsed_data, 'relPosHPE', 0) * 1e-2)
-                Rover_D = parsed_data.relPosD + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)
+                # u-blox NAV-RELPOSNED: relPosN/E/D in cm (raw int), relPosHPN/E/D in 0.1 mm.
+                # Gesamtposition in Metern: (cm-Wert + HPN * 0.01_cm) * 0.01 = m
+                Rover_N = ((parsed_data.relPosN or 0) + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)) * 1e-2
+                Rover_E = ((parsed_data.relPosE or 0) + (getattr(parsed_data, 'relPosHPE', 0) * 1e-2)) * 1e-2
+                Rover_D = ((parsed_data.relPosD or 0) + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)) * 1e-2
                 # Snapshot für Mittelachsen-Berechnung im Logger
                 last_relNED_r3 = (Rover_N, Rover_E, Rover_D)
                 rel_heading = parsed_data.relPosHeading
