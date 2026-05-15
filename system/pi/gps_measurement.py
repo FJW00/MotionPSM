@@ -185,9 +185,9 @@ class RoverState:
         self.time_queue.put(self.iTOW)
         self.acc_heading = p.accHeading or 0
 
-        rN = (p.relPosN or 0) + (getattr(p, 'relPosHPN', 0) * 1e-2)
-        rE = (p.relPosE or 0) + (getattr(p, 'relPosHPE', 0) * 1e-2)
-        rD = (p.relPosD or 0) + (getattr(p, 'relPosHPD', 0) * 1e-2)
+        rN = ((p.relPosN or 0) + (getattr(p, 'relPosHPN', 0) * 1e-2)) * 1e-2
+        rE = ((p.relPosE or 0) + (getattr(p, 'relPosHPE', 0) * 1e-2)) * 1e-2
+        rD = ((p.relPosD or 0) + (getattr(p, 'relPosHPD', 0) * 1e-2)) * 1e-2
         self.relNED = (rN, rE, rD)
         _update_global_relNED(self.idx, self.relNED)
 
