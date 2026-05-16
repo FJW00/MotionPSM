@@ -105,6 +105,49 @@ HTML_PAGE = '''
         color: #222;
         box-shadow: 0 1px 2px rgba(0,0,0,0.08);
       }
+      /* Tare-Steuerung dezent, links neben Toggle */
+      .tare-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tare-btn {
+        background: transparent;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        color: #777;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .tare-btn:hover {
+        background: #f5f5f5;
+        color: #222;
+        border-color: #999;
+      }
+      .tare-status {
+        font-size: 11px;
+        color: #2e7d32;
+        font-weight: 500;
+        display: none;  /* nur sichtbar wenn tariert */
+        align-items: center;
+        gap: 4px;
+      }
+      .tare-status.active { display: inline-flex; }
+      .tare-clear {
+        background: transparent;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0 2px;
+        margin-left: 2px;
+      }
+      .tare-clear:hover { color: #d32f2f; }
 
       /* ---------- Settings-Bar (Boom Width, immer sichtbar) ---------- */
       .settings-bar {
@@ -289,9 +332,18 @@ HTML_PAGE = '''
       </div>
       <div class="brand-right-block">
         <div class="brand-right">Real Time Monitor</div>
-        <div class="data-mode-toggle" id="data_mode_toggle">
-          <button type="button" data-mode="filtered" class="active">Smoothed</button>
-          <button type="button" data-mode="raw">Raw</button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="tare-controls">
+            <button type="button" class="tare-btn" id="tare_btn" title="Save current values as zero reference">⌖ Set Zero</button>
+            <span class="tare-status" id="tare_status">
+              <span>Tared <span id="tare_time">--:--:--</span></span>
+              <button type="button" class="tare-clear" id="tare_clear" title="Clear tare">×</button>
+            </span>
+          </div>
+          <div class="data-mode-toggle" id="data_mode_toggle">
+            <button type="button" data-mode="filtered" class="active">Smoothed</button>
+            <button type="button" data-mode="raw">Raw</button>
+          </div>
         </div>
       </div>
     </div>
@@ -463,6 +515,34 @@ HTML_PAGE = '''
         });
       })();
 
+      // ----- Tare (Set Zero / Clear) -----
+      function updateTareUI(setAt) {
+        const status = document.getElementById('tare_status');
+        const time = document.getElementById('tare_time');
+        if (setAt) {
+          status.classList.add('active');
+          time.innerText = setAt;
+        } else {
+          status.classList.remove('active');
+        }
+      }
+      (function initTare() {
+        const btn = document.getElementById('tare_btn');
+        if (btn) btn.addEventListener('click', () => {
+          fetch('/zero', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => updateTareUI(d.tare_set_at))
+            .catch(err => console.warn('tare error', err));
+        });
+        const clr = document.getElementById('tare_clear');
+        if (clr) clr.addEventListener('click', () => {
+          fetch('/zero/clear', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => updateTareUI(null))
+            .catch(err => console.warn('tare clear error', err));
+        });
+      })();
+
       {% if running %}
       const longCtx = document.getElementById('longChart').getContext('2d');
       const longChart = new Chart(longCtx, {
@@ -550,6 +630,9 @@ HTML_PAGE = '''
       function fetchData() {
         fetch('/data').then(r => r.json()).then(d => {
           const t = ((Date.now() - startTime) / 1000).toFixed(1);
+
+          // Tare-Status-Anzeige synchron halten (falls per anderem Browser-Tab geändert)
+          updateTareUI(d.tare_set_at);
 
           // Mode-abhängige Werte wählen (CSV bekommt immer beide Spalten unabhängig vom Toggle)
           const r1_long_disp  = (dataMode === 'filtered') ? d.r1_longitudinal_filtered_cm : d.r1_longitudinal_cm;
@@ -647,6 +730,20 @@ def stop():
     return redirect(url_for('index'))
 
 
+@app.route('/zero', methods=['POST', 'GET'])
+def zero():
+    """Tariert: speichert aktuelle longitudinal+lateral als Nullpunkt."""
+    ts = gps.set_tare()
+    return jsonify({'ok': True, 'tare_set_at': ts})
+
+
+@app.route('/zero/clear', methods=['POST', 'GET'])
+def zero_clear():
+    """Setzt die Tare-Offsets zurück auf 0."""
+    gps.clear_tare()
+    return jsonify({'ok': True, 'tare_set_at': None})
+
+
 def _g(name, default=0):
     """Defensive getter — manche gps-Globals existieren erst, wenn die Threads laufen."""
     return getattr(gps, name, default)
@@ -661,6 +758,20 @@ def data():
     r2_long_raw  = float(_g('R2_longitudinal_offset_cm') or 0)
     r1_long_filt = float(_g('R1_longitudinal_filtered_cm') or 0)
     r2_long_filt = float(_g('R2_longitudinal_filtered_cm') or 0)
+
+    # Tare-Offsets anwenden (vom Frontend per /zero Button gesetzt)
+    tare_r1_long = float(_g('TARE_R1_LONG_CM') or 0)
+    tare_r2_long = float(_g('TARE_R2_LONG_CM') or 0)
+    tare_r1_lat  = float(_g('TARE_R1_LAT_CM') or 0)
+    tare_r2_lat  = float(_g('TARE_R2_LAT_CM') or 0)
+    tare_set_at  = _g('TARE_SET_AT', None)
+    # Tare-bereinigte Werte
+    r1_long_raw  -= tare_r1_long
+    r2_long_raw  -= tare_r2_long
+    r1_long_filt -= tare_r1_long
+    r2_long_filt -= tare_r2_long
+    r1_lat       -= tare_r1_lat
+    r2_lat       -= tare_r2_lat
 
     # Gieren-Komponenten (nach Falks GeoGebra-Notation) — Raw + Filtered
     symmetric_yaw_raw_cm   = (r2_long_raw  - r1_long_raw)  / 2.0  # Gestänge dreht um Mittelpunkt
@@ -708,6 +819,7 @@ def data():
         'gestaenge_total_cm':  round(r1_lat - r2_lat, 2),
         'axis_length_m':       round(float(_g('vehicle_axis_length_m') or 0), 3),
         'axis_heading_deg':    round(float(_g('vehicle_heading_via_r3') or 0), 2),
+        'tare_set_at':         tare_set_at,
         'r1_quality':          (q1[0] if q1 else 0) if hasattr(q1, '__getitem__') else 0,
         'r2_quality':          (q2[0] if q2 else 0) if hasattr(q2, '__getitem__') else 0,
         'r3_quality':          (q3[0] if q3 else 0) if hasattr(q3, '__getitem__') else 0,

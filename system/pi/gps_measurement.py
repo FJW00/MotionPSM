@@ -52,6 +52,39 @@ R2_longitudinal_filtered_cm = 0
 vehicle_axis_length_m = 0      # Länge Base->R3 in m
 vehicle_heading_via_r3 = 0     # Maschinen-Heading aus R3 statt aus Base-Bewegung
 
+# Tare-Offsets (Nullpunkt-Korrektur, vom User per Button gesetzt; nicht persistent)
+TARE_R1_LONG_CM = 0.0
+TARE_R2_LONG_CM = 0.0
+TARE_R1_LAT_CM = 0.0
+TARE_R2_LAT_CM = 0.0
+TARE_SET_AT = None  # ISO-Timestamp-String oder None wenn nicht tariert
+
+
+def set_tare():
+    """Tariert: speichert aktuelle longitudinal+lateral als Zero-Offset.
+    Aufgerufen vom /zero Endpoint im server.py."""
+    global TARE_R1_LONG_CM, TARE_R2_LONG_CM, TARE_R1_LAT_CM, TARE_R2_LAT_CM, TARE_SET_AT
+    TARE_R1_LONG_CM = float(R1_longitudinal_offset_cm)
+    TARE_R2_LONG_CM = float(R2_longitudinal_offset_cm)
+    TARE_R1_LAT_CM = float(R1_lateral_offset_cm)
+    TARE_R2_LAT_CM = float(R2_lateral_offset_cm)
+    TARE_SET_AT = datetime.now().strftime('%H:%M:%S')
+    print(f"[Tare] Nullpunkt gesetzt um {TARE_SET_AT}: "
+          f"R1_long={TARE_R1_LONG_CM:.2f}cm R2_long={TARE_R2_LONG_CM:.2f}cm "
+          f"R1_lat={TARE_R1_LAT_CM:.2f}cm R2_lat={TARE_R2_LAT_CM:.2f}cm")
+    return TARE_SET_AT
+
+
+def clear_tare():
+    """Setzt Tare-Offsets zurück auf 0."""
+    global TARE_R1_LONG_CM, TARE_R2_LONG_CM, TARE_R1_LAT_CM, TARE_R2_LAT_CM, TARE_SET_AT
+    TARE_R1_LONG_CM = 0.0
+    TARE_R2_LONG_CM = 0.0
+    TARE_R1_LAT_CM = 0.0
+    TARE_R2_LAT_CM = 0.0
+    TARE_SET_AT = None
+    print("[Tare] Nullpunkt geloescht.")
+
 # Filter-Konfig (wird in start_measurement() aus config.json überschrieben)
 FILTER_WINDOW_S = 0.2          # Default: 200 ms Moving-Average
 FILTER_SAMPLE_RATE_HZ = 10     # u-blox 10 Hz Sampling
@@ -761,7 +794,13 @@ def csv_logger_thread_buffered():
                 # Gefilterte Spalten (Moving-Average longitudinal R1/R2 + abgeleitete Yaw-Komponenten)
                 R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
                 sym_yaw_raw, sym_yaw_filt,
-                asym_yaw_raw, asym_yaw_filt
+                asym_yaw_raw, asym_yaw_filt,
+                # Tare-bereinigte Spalten (Rohwerte minus aktuelle Tare-Offsets)
+                (lon_r1_cm - TARE_R1_LONG_CM) if lon_r1_cm is not None else None,
+                (lon_r2_cm - TARE_R2_LONG_CM) if lon_r2_cm is not None else None,
+                (lat_r1_cm - TARE_R1_LAT_CM) if lat_r1_cm is not None else None,
+                (lat_r2_cm - TARE_R2_LAT_CM) if lat_r2_cm is not None else None,
+                TARE_SET_AT if TARE_SET_AT else ""
             ])
 
             line = (f"{R_1_msg.replace('.', ',')};"
@@ -852,7 +891,11 @@ def export_to_csv():
                 # Gefilterte Schwingungs-Metriken (Moving-Average, Fensterbreite aus config.json: FILTER_WINDOW_S)
                 "VarA_R1_longitudinal_filtered_cm", "VarA_R2_longitudinal_filtered_cm",
                 "Symmetric_Yaw_raw_cm", "Symmetric_Yaw_filtered_cm",
-                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm"
+                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm",
+                # Tare-bereinigte Werte (Roh minus aktuelle Tare-Offsets, vom UI-Button "Set Zero" gesetzt)
+                "VarA_R1_longitudinal_tared_cm", "VarA_R2_longitudinal_tared_cm",
+                "VarA_R1_lateral_tared_cm", "VarA_R2_lateral_tared_cm",
+                "Tare_set_at"
             ])
             #------Daten schreiben--------
             for row in csv_data_buffer:
