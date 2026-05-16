@@ -73,6 +73,38 @@ HTML_PAGE = '''
         color: var(--col-brand);
         letter-spacing: 0.2px;
       }
+      .brand-right-block {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+      .data-mode-toggle {
+        display: inline-flex;
+        background: #eee;
+        border-radius: 6px;
+        padding: 2px;
+        font-size: 12px;
+        font-weight: 500;
+        user-select: none;
+      }
+      .data-mode-toggle button {
+        background: transparent;
+        border: none;
+        padding: 4px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #888;
+        font-family: inherit;
+        font-weight: 500;
+        font-size: 12px;
+        transition: all 0.15s;
+      }
+      .data-mode-toggle button.active {
+        background: white;
+        color: #222;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+      }
 
       /* ---------- Settings-Bar (Boom Width, immer sichtbar) ---------- */
       .settings-bar {
@@ -255,7 +287,13 @@ HTML_PAGE = '''
           <div class="brand-tagline">MotionPSM</div>
         </div>
       </div>
-      <div class="brand-right">Real Time Monitor</div>
+      <div class="brand-right-block">
+        <div class="brand-right">Real Time Monitor</div>
+        <div class="data-mode-toggle" id="data_mode_toggle">
+          <button type="button" data-mode="filtered" class="active">Smoothed</button>
+          <button type="button" data-mode="raw">Raw</button>
+        </div>
+      </div>
     </div>
 
     {% if running %}
@@ -406,7 +444,24 @@ HTML_PAGE = '''
     {% endif %}
 
     <script>
-      // Boom-Width wird nicht mehr als Eingabe gebraucht — Skalierung läuft dynamisch über die gemessenen lateral-Werte.
+      // ----- Data-Mode-Toggle (Smoothed/Raw) — wirkt nur auf die UI, CSV bleibt immer beide Spalten -----
+      const DATA_MODE_KEY = 'motionpsm_data_mode';
+      let dataMode = localStorage.getItem(DATA_MODE_KEY) || 'filtered';
+
+      function setDataMode(mode) {
+        dataMode = mode;
+        localStorage.setItem(DATA_MODE_KEY, mode);
+        document.querySelectorAll('#data_mode_toggle button').forEach(b => {
+          b.classList.toggle('active', b.dataset.mode === mode);
+        });
+      }
+      // Initial-State aus localStorage
+      (function initDataMode() {
+        document.querySelectorAll('#data_mode_toggle button').forEach(b => {
+          b.classList.toggle('active', b.dataset.mode === dataMode);
+          b.addEventListener('click', () => setDataMode(b.dataset.mode));
+        });
+      })();
 
       {% if running %}
       const longCtx = document.getElementById('longChart').getContext('2d');
@@ -496,11 +551,17 @@ HTML_PAGE = '''
         fetch('/data').then(r => r.json()).then(d => {
           const t = ((Date.now() - startTime) / 1000).toFixed(1);
 
+          // Mode-abhängige Werte wählen (CSV bekommt immer beide Spalten unabhängig vom Toggle)
+          const r1_long_disp  = (dataMode === 'filtered') ? d.r1_longitudinal_filtered_cm : d.r1_longitudinal_cm;
+          const r2_long_disp  = (dataMode === 'filtered') ? d.r2_longitudinal_filtered_cm : d.r2_longitudinal_cm;
+          const sym_yaw_disp  = (dataMode === 'filtered') ? d.symmetric_yaw_filtered_cm  : d.symmetric_yaw_cm;
+          const asym_yaw_disp = (dataMode === 'filtered') ? d.asymmetric_yaw_filtered_cm : d.asymmetric_yaw_cm;
+
           // Hauptmetriken — Schwingung
-          document.getElementById('r1_long').innerText  = fmtSigned(d.r1_longitudinal_cm);
-          document.getElementById('r2_long').innerText  = fmtSigned(d.r2_longitudinal_cm);
-          document.getElementById('sym_yaw').innerText  = fmtSigned(d.symmetric_yaw_cm);
-          document.getElementById('asym_yaw').innerText = fmtSigned(d.asymmetric_yaw_cm);
+          document.getElementById('r1_long').innerText  = fmtSigned(r1_long_disp);
+          document.getElementById('r2_long').innerText  = fmtSigned(r2_long_disp);
+          document.getElementById('sym_yaw').innerText  = fmtSigned(sym_yaw_disp);
+          document.getElementById('asym_yaw').innerText = fmtSigned(asym_yaw_disp);
           document.getElementById('r1_angle').innerText = fmtSigned(d.r1_angle_deg, 2);
           document.getElementById('r2_angle').innerText = fmtSigned(d.r2_angle_deg, 2);
 
@@ -524,18 +585,18 @@ HTML_PAGE = '''
           setQuality('r2_q', d.r2_quality);
           setQuality('r3_q', d.r3_quality);
 
-          // SVG: Marker wandern vertikal mit longitudinal
-          updateBoom(d.r1_longitudinal_cm, d.r2_longitudinal_cm, d.r1_lateral_cm, d.r2_lateral_cm);
+          // SVG: Marker wandern vertikal mit longitudinal (Mode-abhängig)
+          updateBoom(r1_long_disp, r2_long_disp, d.r1_lateral_cm, d.r2_lateral_cm);
 
-          // Chart: longitudinal-Verlauf
+          // Chart: longitudinal-Verlauf (Mode-abhängig)
           if (longChart.data.labels.length > CHART_MAX_POINTS) {
             longChart.data.labels.shift();
             longChart.data.datasets.forEach(ds => ds.data.shift());
           }
           longChart.data.labels.push(t);
-          longChart.data.datasets[0].data.push(d.r1_longitudinal_cm);
-          longChart.data.datasets[1].data.push(d.r2_longitudinal_cm);
-          longChart.data.datasets[2].data.push(d.symmetric_yaw_cm);
+          longChart.data.datasets[0].data.push(r1_long_disp);
+          longChart.data.datasets[1].data.push(r2_long_disp);
+          longChart.data.datasets[2].data.push(sym_yaw_disp);
           longChart.update();
         }).catch(err => console.warn('fetch error', err));
       }
@@ -594,14 +655,24 @@ def _g(name, default=0):
 @app.route('/data')
 def data():
     from math import degrees, atan2, sqrt
-    r1_lat  = float(_g('R1_lateral_offset_cm') or 0)
-    r2_lat  = float(_g('R2_lateral_offset_cm') or 0)
-    r1_long = float(_g('R1_longitudinal_offset_cm') or 0)
-    r2_long = float(_g('R2_longitudinal_offset_cm') or 0)
+    r1_lat       = float(_g('R1_lateral_offset_cm') or 0)
+    r2_lat       = float(_g('R2_lateral_offset_cm') or 0)
+    r1_long_raw  = float(_g('R1_longitudinal_offset_cm') or 0)
+    r2_long_raw  = float(_g('R2_longitudinal_offset_cm') or 0)
+    r1_long_filt = float(_g('R1_longitudinal_filtered_cm') or 0)
+    r2_long_filt = float(_g('R2_longitudinal_filtered_cm') or 0)
 
-    # Gieren-Komponenten (nach Falks GeoGebra-Notation)
-    symmetric_yaw_cm  = (r2_long - r1_long) / 2.0  # Gestänge dreht um Mittelpunkt
-    asymmetric_yaw_cm = (r1_long + r2_long) / 2.0  # Gestänge wandert gesamt vor/zurück
+    # Gieren-Komponenten (nach Falks GeoGebra-Notation) — Raw + Filtered
+    symmetric_yaw_raw_cm   = (r2_long_raw  - r1_long_raw)  / 2.0  # Gestänge dreht um Mittelpunkt
+    asymmetric_yaw_raw_cm  = (r1_long_raw  + r2_long_raw)  / 2.0  # Gestänge wandert gesamt vor/zurück
+    symmetric_yaw_filt_cm  = (r2_long_filt - r1_long_filt) / 2.0
+    asymmetric_yaw_filt_cm = (r1_long_filt + r2_long_filt) / 2.0
+
+    # Frontend-Kompat: r1_long / symmetric_yaw_cm bleiben als roh-Default
+    r1_long = r1_long_raw
+    r2_long = r2_long_raw
+    symmetric_yaw_cm  = symmetric_yaw_raw_cm
+    asymmetric_yaw_cm = asymmetric_yaw_raw_cm
 
     # Hebellänge je Rover = Abstand zur Baseline (für Winkel-Berechnung)
     r1_arm = abs(r1_lat) if r1_lat else 1.0  # avoid div-by-0
@@ -618,11 +689,17 @@ def data():
     q1 = _g('quality_rover1');  q2 = _g('quality_rover2');  q3 = _g('quality_rover3')
     return jsonify({
         'runtime':             calculate_runtime(),
-        # Hauptmetriken — die Schwingung
-        'r1_longitudinal_cm':  round(r1_long, 2),
-        'r2_longitudinal_cm':  round(r2_long, 2),
-        'symmetric_yaw_cm':    round(symmetric_yaw_cm, 2),
-        'asymmetric_yaw_cm':   round(asymmetric_yaw_cm, 2),
+        # Hauptmetriken — die Schwingung (Raw)
+        'r1_longitudinal_cm':           round(r1_long_raw, 2),
+        'r2_longitudinal_cm':           round(r2_long_raw, 2),
+        'symmetric_yaw_cm':             round(symmetric_yaw_raw_cm, 2),
+        'asymmetric_yaw_cm':            round(asymmetric_yaw_raw_cm, 2),
+        # Hauptmetriken — Filtered (Moving-Average aus config.json FILTER_WINDOW_S)
+        'r1_longitudinal_filtered_cm':  round(r1_long_filt, 2),
+        'r2_longitudinal_filtered_cm':  round(r2_long_filt, 2),
+        'symmetric_yaw_filtered_cm':    round(symmetric_yaw_filt_cm, 2),
+        'asymmetric_yaw_filtered_cm':   round(asymmetric_yaw_filt_cm, 2),
+        # Winkel zur Baseline (immer aus raw — sind sub-Grad-Werte sowieso ruhig)
         'r1_angle_deg':        round(r1_angle_deg, 2),
         'r2_angle_deg':        round(r2_angle_deg, 2),
         # Geometrie (für SVG-Skalierung)
