@@ -46,8 +46,17 @@ R1_lateral_offset_cm = 0       # Variante A: senkrechter Abstand R1 zur Längsac
 R2_lateral_offset_cm = 0       # Variante A: senkrechter Abstand R2 zur Längsachse (rechts=−)
 R1_longitudinal_offset_cm = 0  # SCHWINGUNGS-METRIK: Vor-/Rück-Auslenkung R1 (+ = vorne in Fahrtrichtung)
 R2_longitudinal_offset_cm = 0  # SCHWINGUNGS-METRIK: Vor-/Rück-Auslenkung R2 (+ = vorne in Fahrtrichtung)
+# Geglättete Versionen (Moving-Average mit Fensterbreite FILTER_WINDOW_S aus config.json)
+R1_longitudinal_filtered_cm = 0
+R2_longitudinal_filtered_cm = 0
 vehicle_axis_length_m = 0      # Länge Base->R3 in m
 vehicle_heading_via_r3 = 0     # Maschinen-Heading aus R3 statt aus Base-Bewegung
+
+# Filter-Konfig (wird in start_measurement() aus config.json überschrieben)
+FILTER_WINDOW_S = 0.2          # Default: 200 ms Moving-Average
+FILTER_SAMPLE_RATE_HZ = 10     # u-blox 10 Hz Sampling
+_r1_long_filter_buf = deque(maxlen=2)  # maxlen wird in start_measurement() neu gesetzt
+_r2_long_filter_buf = deque(maxlen=2)
 
 #-------Globale Variablen für Base und Rover--------
 B_Time = queue.Queue()
@@ -660,6 +669,7 @@ def csv_logger_thread_buffered():
     """
     global R1_lateral_offset_cm, R2_lateral_offset_cm
     global R1_longitudinal_offset_cm, R2_longitudinal_offset_cm
+    global R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm
     global vehicle_axis_length_m, vehicle_heading_via_r3
 
     print("[Logger] Thread gestartet (3 Rover + Base)")
@@ -723,16 +733,35 @@ def csv_logger_thread_buffered():
             R2_lateral_offset_cm = lat_r2_cm if lat_r2_cm is not None else 0
             R1_longitudinal_offset_cm = lon_r1_cm if lon_r1_cm is not None else 0
             R2_longitudinal_offset_cm = lon_r2_cm if lon_r2_cm is not None else 0
+
+            # Moving-Average-Filter (Fensterbreite FILTER_WINDOW_S aus config.json)
+            if lon_r1_cm is not None:
+                _r1_long_filter_buf.append(lon_r1_cm)
+                R1_longitudinal_filtered_cm = sum(_r1_long_filter_buf) / len(_r1_long_filter_buf)
+            if lon_r2_cm is not None:
+                _r2_long_filter_buf.append(lon_r2_cm)
+                R2_longitudinal_filtered_cm = sum(_r2_long_filter_buf) / len(_r2_long_filter_buf)
+
             vehicle_axis_length_m = a_len if a_len is not None else 0
             vehicle_heading_via_r3 = axis_heading if axis_heading is not None else 0
 
             # ----- CSV-Zeile zusammenbauen -----
+            # Symmetric / Asymmetric Yaw (roh + gefiltert) — nach Falks GeoGebra-Konvention
+            sym_yaw_raw      = (lon_r2_cm - lon_r1_cm) / 2.0 if (lon_r1_cm is not None and lon_r2_cm is not None) else None
+            asym_yaw_raw     = (lon_r1_cm + lon_r2_cm) / 2.0 if (lon_r1_cm is not None and lon_r2_cm is not None) else None
+            sym_yaw_filt     = (R2_longitudinal_filtered_cm - R1_longitudinal_filtered_cm) / 2.0
+            asym_yaw_filt    = (R1_longitudinal_filtered_cm + R2_longitudinal_filtered_cm) / 2.0
+
             calc_outline = ";".join(_csv_format(v) for v in [
                 lat_r1_cm, lat_r2_cm, lon_r1_cm, lon_r2_cm,
                 a_len, axis_heading,
                 dist_r1_m * 100 if dist_r1_m is not None else None, head_r1_deg,
                 dist_r2_m * 100 if dist_r2_m is not None else None, head_r2_deg,
-                gestaenge_total_cm
+                gestaenge_total_cm,
+                # Gefilterte Spalten (Moving-Average longitudinal R1/R2 + abgeleitete Yaw-Komponenten)
+                R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
+                sym_yaw_raw, sym_yaw_filt,
+                asym_yaw_raw, asym_yaw_filt
             ])
 
             line = (f"{R_1_msg.replace('.', ',')};"
@@ -819,7 +848,11 @@ def export_to_csv():
                 "VarB_R3R1_distance_cm", "VarB_R3R1_heading_deg",
                 "VarB_R3R2_distance_cm", "VarB_R3R2_heading_deg",
                 # Gestängebewegungs-Indikator (Differenz R1 - R2)
-                "VarA_Gestaenge_total_cm"
+                "VarA_Gestaenge_total_cm",
+                # Gefilterte Schwingungs-Metriken (Moving-Average, Fensterbreite aus config.json: FILTER_WINDOW_S)
+                "VarA_R1_longitudinal_filtered_cm", "VarA_R2_longitudinal_filtered_cm",
+                "Symmetric_Yaw_raw_cm", "Symmetric_Yaw_filtered_cm",
+                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm"
             ])
             #------Daten schreiben--------
             for row in csv_data_buffer:
@@ -862,6 +895,14 @@ def start_measurement():
     ROVER1_COM_PORT = config.get('ROVER1_COM_PORT')
     ROVER2_COM_PORT = config.get('ROVER2_COM_PORT')
     ROVER3_COM_PORT = config.get('ROVER3_COM_PORT')
+
+    # Filter-Konfig — Moving-Average-Fensterbreite für R1/R2 longitudinal
+    global FILTER_WINDOW_S, _r1_long_filter_buf, _r2_long_filter_buf
+    FILTER_WINDOW_S = float(config.get('FILTER_WINDOW_S', 0.2))
+    filter_samples = max(1, int(round(FILTER_WINDOW_S * FILTER_SAMPLE_RATE_HZ)))
+    _r1_long_filter_buf = deque(maxlen=filter_samples)
+    _r2_long_filter_buf = deque(maxlen=filter_samples)
+    print(f"[Filter] Moving-Average Fensterbreite {FILTER_WINDOW_S}s = {filter_samples} Samples")
 
     if not ROVER3_COM_PORT:
         raise RuntimeError("ROVER3_COM_PORT fehlt in config.json — siehe config.example.json")
