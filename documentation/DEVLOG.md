@@ -4,58 +4,150 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
-## 2026-05-11 — Autostart: systemd-Service + neues Wrapper-Script
+## 2026-05-17 — Hardware-Erkenntnis: Base muss am Schlepper, nicht am Gestänge
 
-**Was:**
+**Beobachtung aus Test-Fahrt Records_F9P_20260516_171707_ausg.xls:**
 
-Drei Files in `system/pi/`:
-- `autostart_schwingung_fw.sh` — überarbeitetes Wrapper-Script.
-  - Erkennt seinen eigenen Pfad und davon ausgehend Repo-Pfad automatisch (egal wo das Repo geclont ist).
-  - Prüft, ob `config.json` existiert — wenn nicht, klare Fehlermeldung.
-  - Aktiviert venv falls vorhanden (`<repo>/.venv/`), sonst System-Python3.
-  - `exec python3` ersetzt den Shell-Prozess, damit systemd Crashes erkennt.
-- `motionpsm.service.template` — systemd-Service-Template mit Platzhaltern `{{USER}}` und `{{REPO_DIR}}`.
-  - 10 Sek `ExecStartPre=/bin/sleep` damit USB-Hardware Zeit hat sich zu enumerieren.
-  - `Restart=on-failure` mit `StartLimitBurst=10` in 300 Sek — bei Crashes Restart-Loop, aber kein endloses Re-Loopen.
-  - Logging über journalctl (`SyslogIdentifier=motionpsm`).
-- `install_autostart.sh` — Einmal-Installer.
-  - Erkennt aktuellen User + Repo-Pfad automatisch.
-  - Rendert das Template mit den korrekten Werten.
-  - Kopiert generierte Service-Datei nach `/etc/systemd/system/` (sudo).
-  - `systemctl enable` damit Service beim Boot startet.
+Bei einer 73°-Kurvenfahrt (sichtbar im `Axis_R3_heading_deg`-Plot: 145° → 72°) blieb das Gestänge mit ~17 cm Symmetric Yaw verdreht hängen (R1 ≈ −15 cm, R2 ≈ +20 cm im Endstand). Zusätzlich schwankte `Axis_R3_length_m` während der Fahrt um 4 cm (4.97 ↔ 5.03 m) — sollte konstant sein bei festem R3.
 
-**Warum:**
+**Ursache:** Base war auf der gezogenen Spritze selbst am Gestänge montiert. Damit:
+- Base schwingt mit dem Gestänge mit
+- `relPosNED` ist Rover-Position minus Base-Position → Schwingung der Base wird von der Rover-Schwingung abgezogen
+- Reale Gestängebewegung wird systematisch zu klein gemessen
+- Achse Base→R3 wackelt, weil Base als Bezugspunkt selbst nicht ruhig ist
+- Base hat zudem schlechtere Sky-View am Gestänge → schlechtere RTK-Qualität
 
-- Altes `autostart_schwingung_fw.sh` hatte hardcoded Pfade aus dem Pre-Refactor-Stand (`/home/ba_weigand/software/final/PI/server.py`) — funktioniert nach Repo-Restrukturierung nicht mehr.
-- Shebang stand auf Zeile 4 statt Zeile 1 — wurde so nicht als Bash-Script erkannt.
-- Es gab keinen systemd-Service. Ein `.sh` allein startet nicht beim Boot.
-- Neue Lösung ist portabel (Repo kann überall liegen), user-agnostisch (Installer erkennt User), und resistent (Restart-on-failure).
+**Hardware-Regel ab jetzt:**
+- **Base am Schlepperdach** (oder höchster fester Punkt am Schlepper), maximale Sky-View
+- **R3 ebenfalls am Schlepper** (Anbaubock, vorne in Fahrtrichtung) — definiert Längsachse aus zwei schlepperfesten Punkten
+- **R1, R2 am Gestänge-Ende** — die einzigen Punkte die wirklich schwingen sollen
+- Damit ist die Achse Base→R3 garantiert stabil und `relPosNED` für R1/R2 misst echte Gestängebewegung 1:1
+
+**Halterung-Tipp (Falks Eigenkonstruktion):** Antennen mit Rohrklemmen aus Kamerazubehör auf Standardrohren befestigt. Funktioniert sehr gut, vibrationsfest. Wird übernommen für alle Aufbauten.
+
+**Folge für Daten-Validität:**
+Die Test-Daten vom 16.05. (Base am Gestänge) sind als Konzept-Validierung brauchbar, aber für quantitative Aussagen nicht final — die 17 cm Restverdrehung könnte teilweise Base-Schwingungs-Artefakt sein, teilweise echte mechanische Hysterese im Gestänge. Mit Base am Schlepper (ab Dienstag 19.05.) werden die Werte sauberer.
 
 **Test offen:**
+- Dienstag 19.05.: Neuer Aufbau mit Base + R3 am Schlepper, R1/R2 am Gestänge. Vorher Tare drücken.
+- Erwartung: `Axis_R3_length` stabil ±1 cm, R1/R2 longitudinal im Stand sauber bei 0, nach Schwingungsabklingen wieder ≈ 0 (außer echte mechanische Verdrehung).
 
-Am Pi einmalig:
-```bash
-cd ~/MotionPSM   # oder wo immer geclont
-git fetch
-git checkout feature/rover3       # oder refactor/cleanup
-cp system/config/config.example.json system/config/config.json
-nano system/config/config.json    # COM-Port-IDs eintragen
-bash system/pi/install_autostart.sh
-sudo systemctl start motionpsm
-sudo systemctl status motionpsm
-sudo journalctl -u motionpsm -f
+---
+
+## 2026-05-17 — Mathematik-Beweis: Variante A ist rotationsinvariant
+
+**Frage Falks:** Wenn die Maschine Kurven fährt, verschiebt sich dann mein gemessener longitudinal-Wert durch das wechselnde Maschinen-Heading?
+
+**Antwort:** Nein. `VarA_R1_longitudinal_cm` ist mathematisch invariant gegen Maschinen-Rotation, sofern R3 wirklich fest am Schlepper sitzt.
+
+**Beweis (kurz):**
+Sei R_θ die Rotationsmatrix der Maschine um Winkel θ. Bei reiner Rotation gilt:
 ```
+R1_NED' = R_θ × R1_NED
+R3_NED' = R_θ × R3_NED
+Achsen_Einheitsvektor' = R_θ × Achsen_Einheitsvektor
+longitudinal' = R1_NED' · Achsen_Einheitsvektor' = R1_NED · Achsen_Einheitsvektor = longitudinal
+```
+(Skalarprodukt ist rotationsinvariant.)
 
-Erwartete Sanity-Checks:
-- `systemctl status motionpsm` zeigt `active (running)`
-- `journalctl` zeigt "Roverthread 1/2/3 started", "Basethread started", "[Logger] Thread gestartet"
-- `http://<pi-ip>:5000` liefert das Frontend
+**Praktische Implikation:** Wenn nach einer Fahrt die R1/R2 longitudinal-Werte nicht in 0 zurückkommen, ist die Ursache:
+1. Reale mechanische Verdrehung des Gestänges (Hysterese, gehemmter Pendel-Rückgang)
+2. R3 hat sich physisch relativ zum Schlepper verstellt
+3. Slow Phase-Drift (Ionosphäre, Antennen-PCO) — typisch nur wenige cm
 
-**Risiko:**
+**NICHT die Ursache:** das Maschinen-Heading. Die alte Sorge vor "Heading-Drift" ist mit R3 mathematisch abgedeckt.
 
-- `ExecStartPre=/bin/sleep 10` reicht evtl. nicht wenn USB-Hardware langsam enumeriert. Notfalls in der Service-Datei auf 20 oder 30 erhöhen.
-- venv-Detection: wenn der User vorher ein venv angelegt hat, das aber unter einem anderen Pfad als `<repo>/.venv/` liegt, wird es ignoriert. Falls nötig: VENV_DIR im autostart-Script anpassen.
-- Logs landen in journalctl, nicht in einer Datei. Falls eine eigene Log-Datei gewünscht: `StandardOutput=append:/var/log/motionpsm.log` ergänzen.
+---
+
+## 2026-05-17 — Tare-Funktion (Set Zero / Clear)
+
+**Was:** UI-Button "⌖ Set Zero" oben rechts (links neben Smoothed/Raw-Toggle, dezent gestaltet) speichert die aktuellen longitudinal+lateral-Werte von R1 und R2 als Nullpunkt-Referenz. Alle nachfolgenden Live-Werte und CSV-Spalten `VarA_R*_*_tared_cm` werden gegen diesen Offset berechnet. Status "Tared HH:MM:SS" zeigt aktiven Tare-Zustand mit `×`-Button zum Clear.
+
+**Warum:**
+- Rover sind nie 100% perfekt symmetrisch zur Längsachse montiert (z.B. R1 sitzt 5 cm weiter vorne als R2) → ohne Tare permanente Offsets
+- Nach RTK-Re-Fix oder Halterung-Verstellung kann man auf aktuelle Position nullen ohne Code-Eingriff
+- Workflow: Maschine fertig aufgebaut + still → Set Zero → Messung starten → alles relativ zur Ausgangslage
+
+**Implementation:**
+- `gps_measurement.py`: Module-Globals `TARE_R1/R2_LONG/LAT_CM` + `TARE_SET_AT`, plus `set_tare()` / `clear_tare()` Funktionen
+- `server.py`: Endpoints `/zero` (POST/GET) und `/zero/clear` (POST/GET); `/data` subtrahiert Offsets vor Auslieferung
+- CSV bekommt 5 zusätzliche Spalten am Ende: `VarA_R1/R2_longitudinal/lateral_tared_cm` + `Tare_set_at`
+- Roh-Werte bleiben im CSV erhalten — Post-Processing-Flexibilität
+
+**Bewusst NICHT persistent:** Tare-Werte werden nicht in eine JSON gespeichert, sondern bleiben nur pro Pi-Session. Begründung: modular auf verschiedene Spritzen — jede Spritze braucht eigenes Tare beim Aufbau.
+
+**Test offen:** Dienstag 19.05. erste Praxis-Nutzung im Maschinen-Setup.
+
+---
+
+## 2026-05-17 — Filter-Iteration: Moving-Average + UI-Toggle Smoothed/Raw
+
+**Was:**
+- `config.json` neues Feld `FILTER_WINDOW_S` (Default 0.2 s = 2 Samples bei 10 Hz Sample-Rate). Höhere Werte = mehr Glättung + mehr Verzögerung.
+- `gps_measurement.py`: Moving-Average-Buffer in `start_measurement()` initialisiert, im Logger berechnet. Module-Globals `R1/R2_longitudinal_filtered_cm`.
+- `server.py` `/data` Endpoint: 4 neue Felder (`r1/r2_longitudinal_filtered_cm`, `symmetric/asymmetric_yaw_filtered_cm`).
+- UI: Toggle "Smoothed | Raw" oben rechts. Default = Smoothed. Persistent in localStorage (Key `motionpsm_data_mode`).
+- CSV bekommt **immer** beide Spaltensätze (raw + filtered), unabhängig vom UI-Toggle — für Post-Processing-Flexibilität: 6 neue Spalten (`VarA_R*_longitudinal_filtered_cm`, `Symmetric/Asymmetric_Yaw_raw/filtered_cm`).
+
+**Warum:**
+- Im Stand schwanken die Rover-Werte auch bei RTK Fix um wenige cm (Multipath, Phase-Drift). Beim Lesen der Live-Anzeige war das verwirrend.
+- Echte Boom-Schwingungen sind typisch 0.5–2 Hz (Periode 0.5–2 s) — diese kommen durch einen 0.2-s-Filter quasi unverändert durch.
+- Der `FILTER_WINDOW_S`-Wert ist im Feld änderbar ohne Code-Eingriff.
+
+---
+
+## 2026-05-17 — Bug-Fix: relPosN/E/D Skalierung (Faktor 100 zu groß)
+
+**Symptom:** `Detected Boom Width` im Frontend zeigte 40 m statt 4 m. Im CSV waren `VarA_R*_lateral_cm` 100× zu groß (z.B. 47500 statt 475).
+
+**Ursache:** u-blox `NAV-RELPOSNED` liefert via pyubx2 die `relPosN/E/D`-Werte als **raw cm-Integers**, nicht als Meter. Der alte Code behandelte sie als Meter, dann wurden sie im Logger nochmal × 100 für cm umgerechnet → Faktor 100 zu groß.
+
+**Fix:** in den drei Rover-Threads:
+```python
+Rover_N = ((parsed_data.relPosN or 0) + (getattr(parsed_data, 'relPosHPN', 0) * 1e-2)) * 1e-2
+```
+Erklärung: `(relPosN_cm + HPN × 0.01_cm)` ist die volle Position in cm; `× 0.01` konvertiert in Meter. Analog Rover_E, Rover_D.
+
+**Verifiziert mit Falks CSV Records_F9P_20260515_123745.csv:**
+- Rover_1_N war 475.58 cm fehlinterpretiert, jetzt 4.7558 m ✓
+- Rover_2_N war −464.38 cm, jetzt −4.6416 m ✓
+- Rover_3_E war 513.04 cm, jetzt 5.1304 m ✓
+
+---
+
+## 2026-05-17 — UI-Iteration: longitudinal als Hauptmetrik, Logo, Roboto, Englisch
+
+**Erkenntnis von Falks erstem Frontend-Test:** Das ursprüngliche Layout zeigte `lateral_offset_cm` als Hauptmetrik. Aber lateral ist im Ruhezustand ≈ halbe Gestängebreite (≈ konstant), nicht die Schwingung. **Die echte Schwingungs-Metrik ist `longitudinal_cm`** (Vor-/Rückwärts-Komponente entlang der Fahrtrichtung).
+
+**Umgebaut:**
+- Hauptanzeige im Hero: `R1/R2 longitudinal` + `Symmetric Yaw` + `Asymmetric Yaw` + Winkel R*-Baseline
+- SVG-Layout neu: Top-Down View. R1/R2-Marker wandern vertikal mit longitudinal-Wert. Soll-Position als grauer Schatten.
+- Skalierung automatisch dynamisch aus den gemessenen Werten, keine manuelle Boom-Width-Eingabe mehr nötig.
+- Branding: FJW-Logo (Logo_FJW_Final.png) oben links + Schriftzug "FJW Systems / MOTIONPSM". "Real Time Monitor" oben rechts in gleicher Größe.
+- Komplett englisch.
+- Roboto als Schriftart (passt zur Briefvorlage).
+- Heading-Schwingung-Plot raus (nur Deflection-History bleibt).
+- R3-Marker im SVG: transparent (45 %) und näher am Gestänge.
+
+**GeoGebra-Referenz für Konvention:**
+- Symmetric Yaw = (R2_long − R1_long) / 2 → entspricht Falks Symmetrisches-Gieren-Sketch (R1 negativ, R2 positiv bei positivem α)
+- Asymmetric Yaw = (R1_long + R2_long) / 2 → reine Translation des gesamten Gestänges
+- Vorzeichen: + = nach vorne in Fahrtrichtung
+
+---
+
+## 2026-05-17 — Autostart + Pi-Setup-Pipeline
+
+**Was:** Drei neue Files in `system/pi/`:
+- `setup_pi.sh`: Einmaliger Pi-Setup. apt-Pakete (python3-venv, git, pip), venv unter `<repo>/.venv/`, pip install -r requirements.txt, config.json aus Template.
+- `requirements.txt`: flask, pyserial, pyubx2, pyproj, numpy, geopy
+- `autostart_schwingung_fw.sh` + `motionpsm.service.template` + `install_autostart.sh`: systemd-Service mit Pfad-Auto-Detection, USB-Wait (10 s), Restart-on-failure, journalctl-Logging.
+
+`documentation/PI_SETUP.md`: Schritt-für-Schritt-Anleitung von frischem Pi-OS bis "Service läuft beim Boot", inkl. Trouble-Shooting-Tabelle und Update-Workflow.
+
+**Warum:** Alter Autostart hatte hardcoded BA-Pfade (`/home/ba_weigand/software/final/...`) und war nicht systemd-basiert. Neue Lösung ist portabel (Repo kann überall liegen), user-agnostisch (Installer erkennt User), und resistent (Restart-on-failure).
+
+**Status (17.05.):** Falk nutzt vorerst manuellen Start ohne Autostart. Autostart wird aktiviert, sobald das System ein Wochenende ohne Eingriff durchgelaufen ist.
 
 ---
 
