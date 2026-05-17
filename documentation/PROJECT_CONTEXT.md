@@ -22,12 +22,12 @@ Stand: 2026-05-11.
 
 ## Hardware-Architektur
 
-- **Base** (u-blox ZED-F9P, C099 Board): zentrale RTK-Basis, sitzt mittig auf dem Schlepper / Traktor. Sendet RTCM-Korrekturen via UART2 an die Rover.
+- **Base** (u-blox ZED-F9P, C099 Board): zentrale RTK-Basis. **MUSS am Schlepper / Anbaubock fest sitzen, NICHT am Gestänge** (sonst werden die Rover-Schwingungen systematisch verfälscht — Erkenntnis aus 17.05.-Test). Maximale Sky-View. Sendet RTCM-Korrekturen via UART2 an die Rover.
 - **Rover 1** (ZED-F9P): **links** am Gestänge montiert (vom Fahrer aus gesehen).
 - **Rover 2** (ZED-F9P): **rechts** am Gestänge.
-- **Rover 3** (ZED-F9P): **vorne in Fahrtrichtung**, definiert die Längsachse Base→R3. *Neu hinzugefügt im Mai 2026.*
+- **Rover 3** (ZED-F9P): **vorne in Fahrtrichtung am Schlepper** (NICHT am Gestänge), definiert die Längsachse Base→R3.
 - **Raspberry Pi 4**: zentrale Steuerung. Liest alle Module über USB ein (`/dev/serial/by-id/...`), läuft Flask-Server zur Live-Anzeige + CSV-Logger.
-- **Antennenhalter**: STEP-Files in `hardware/f9p/`.
+- **Antennenhalter**: STEP-Files in `hardware/f9p/`. Falks Eigenkonstruktion mit Kamera-Rohrklemmen — vibrationsfest, wird übernommen für alle Aufbauten.
 
 **RTK-Modus:** Moving-Base. Jeder Rover bekommt RTCM von der Base und liefert `relPosNED` (Position relativ zur Base) mit RTK-Genauigkeit (~cm).
 
@@ -52,12 +52,26 @@ Stand: 2026-05-11.
   - **Variante B (Vergleich):** Differenzvektoren R3→R1 und R3→R2 → Distanz + Heading, direkt aus relPosNED-Diff.
 - Beides wird ins CSV geloggt (`VarA_*` und `VarB_*` Spalten am Ende).
 
-### CSV-Layout (70 Spalten)
+### CSV-Layout (81 Spalten, Stand 17.05.)
 1. R1 (17 Spalten) — Heading-Stats, Position, Quality
 2. R2 (17)
 3. R3 (17)
 4. Base (8) — Position, Heading, Speed
-5. Berechnungen (11) — Variante A + B + Achsen-Info + Gestängebewegungs-Total
+5. Berechnungen Variante A + B + Achsen-Info + Total (11)
+6. Filtered Spalten (6) — Moving-Average longitudinal + Symmetric/Asymmetric Yaw raw+filtered (siehe config.json `FILTER_WINDOW_S`, default 0.2 s)
+7. Tare-bereinigte Spalten (5) — VarA_R*_longitudinal/lateral_tared_cm + Tare_set_at
+
+### Hauptmetriken
+- **`longitudinal_cm`** = Vor-/Rück-Auslenkung von R1/R2 entlang Fahrtrichtung. + = vorne, − = hinten. **Das ist die Schwingungs-Metrik.**
+- **`lateral_cm`** = Seitlicher Abstand zur Längsachse. ≈ Gestängehalbe, fast konstant.
+- **`Symmetric Yaw`** = (R2_long − R1_long) / 2. Rotation des Gestänges um die Mittelachse.
+- **`Asymmetric Yaw`** = (R1_long + R2_long) / 2. Translation des Gestänges (vor/zurück).
+- Mathematik ist **rotationsinvariant gegen Maschinen-Heading** (Beweis im DEVLOG 17.05.).
+
+### UI-Funktionen
+- **Tare-Button "⌖ Set Zero"** oben rechts (links neben Toggle): speichert aktuelle Werte als Nullpunkt. CSV bekommt zusätzliche `*_tared_cm`-Spalten. Tare-Status mit Clear-`×` daneben.
+- **Toggle "Smoothed | Raw"** oben rechts: schaltet Anzeige zwischen gefilterten und rohen Werten. CSV bekommt immer beides. Persistent in localStorage.
+- **Set Zero VOR jeder Messung drücken** (nach Aufbau, Maschine still) → Schwingungs-Auswertung relativ zur Ausgangslage.
 
 ---
 
@@ -149,11 +163,23 @@ FJW_Schwingung/                         <- lokaler Master-Ordner
 
 ## Offene Punkte / Ideen für später
 
+- **Remote-Zugriff `measure1.fjw-systems.com`** (NACH 15.06.) — Falk will Frontend per Domain erreichbar machen statt nur per lokaler IP. Optionen: Cloudflare-Tunnel (braucht Nameserver-Umstellung weg von Strato) oder Pi-eigener WLAN-AP. **Falk explizit darum gebeten ihn zu erinnern.**
+- **Pi-User + Hostname migrieren** (NACH 15.06.) — derzeit User `ba_weigand`, Hostname `BA_Weigand` aus der BA-Zeit. Sauberer wäre z.B. User `motionpsm` + Hostname `motionpsm-pi-01`. Aufwand mittel (Home-Verzeichnis umbenennen, SSH-Keys neu, Pfade anpassen). Falk erinnern.
 - **Excel-Auto-Fill** für Prüfprotokoll (Prio 3, nach 15.06.)
 - **History-Bereinigung** des alten `MotionPSM_Old`-Repos (löschen nach erfolgreichem Wochenend-Test)
 - **Onepager-Website** fjw-systems.de (Prio 3 — nach 15.06.; statt carrd evtl. eigenes HTML/Tailwind über Netlify)
 - **NumSV / HDOP / accHeading** im Frontend zeigen (derzeit nur Fix-Quality) — kleiner Refactor in gps_measurement.py: globale Vars ergänzen
 - **Gewerbeanmeldung** + Steuerberater-Termin (Falk macht selbst)
+
+## Hardware-Detail: udev-Regeln am Pi
+
+Falk hat udev-Regeln eingerichtet, die die F9P-Module unter festen Kurz-Namen mappen:
+- `/dev/serial/by-id/usb-B_B-if00` (Base)
+- `/dev/serial/by-id/usb-R_1-if00` (Rover 1, links)
+- `/dev/serial/by-id/usb-R_2-if00` (Rover 2, rechts)
+- `/dev/serial/by-id/usb-R_3-if00` (Rover 3, vorne)
+
+Diese Namen kommen in seine echte `system/config/config.json` (.gitignored). Die `config.example.json` im Repo hat die langen Standard-IDs als Platzhalter.
 
 ---
 
