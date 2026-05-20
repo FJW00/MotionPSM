@@ -759,19 +759,16 @@ def data():
     r1_long_filt = float(_g('R1_longitudinal_filtered_cm') or 0)
     r2_long_filt = float(_g('R2_longitudinal_filtered_cm') or 0)
 
-    # Tare-Offsets anwenden (vom Frontend per /zero Button gesetzt)
+    # Tare-Offsets anwenden — NUR longitudinal (lateral bleibt unveraendert, weil lateral
+    # die geometrische Hebelarm-Laenge zur Achse ist und nicht weg-tariert werden soll).
     tare_r1_long = float(_g('TARE_R1_LONG_CM') or 0)
     tare_r2_long = float(_g('TARE_R2_LONG_CM') or 0)
-    tare_r1_lat  = float(_g('TARE_R1_LAT_CM') or 0)
-    tare_r2_lat  = float(_g('TARE_R2_LAT_CM') or 0)
     tare_set_at  = _g('TARE_SET_AT', None)
-    # Tare-bereinigte Werte
     r1_long_raw  -= tare_r1_long
     r2_long_raw  -= tare_r2_long
     r1_long_filt -= tare_r1_long
     r2_long_filt -= tare_r2_long
-    r1_lat       -= tare_r1_lat
-    r2_lat       -= tare_r2_lat
+    # r1_lat / r2_lat: unveraendert
 
     # Gieren-Komponenten (nach Falks GeoGebra-Notation) — Raw + Filtered
     symmetric_yaw_raw_cm   = (r2_long_raw  - r1_long_raw)  / 2.0  # Gestänge dreht um Mittelpunkt

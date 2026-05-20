@@ -52,36 +52,34 @@ R2_longitudinal_filtered_cm = 0
 vehicle_axis_length_m = 0      # Länge Base->R3 in m
 vehicle_heading_via_r3 = 0     # Maschinen-Heading aus R3 statt aus Base-Bewegung
 
-# Tare-Offsets (Nullpunkt-Korrektur, vom User per Button gesetzt; nicht persistent)
+# Tare-Offsets — kompensieren Montage-Asymmetrie in Fahrtrichtung (longitudinal).
+# Lateral wird bewusst NICHT tariert: Lateral = Hebelarm zur Längsachse (Gestängehalbe),
+# soll geometrisch erhalten bleiben. Bei Tare in Ruhelage werden R1/R2 mathematisch
+# auf die Senkrechte zur Längsachse gerückt (longitudinal-Offset weg).
 TARE_R1_LONG_CM = 0.0
 TARE_R2_LONG_CM = 0.0
-TARE_R1_LAT_CM = 0.0
-TARE_R2_LAT_CM = 0.0
 TARE_SET_AT = None  # ISO-Timestamp-String oder None wenn nicht tariert
 
 
 def set_tare():
-    """Tariert: speichert aktuelle longitudinal+lateral als Zero-Offset.
+    """Tariert: speichert aktuelle longitudinal-Werte als Nullpunkt-Offset.
+    Lateral wird bewusst nicht tariert (siehe Begründung oben).
     Aufgerufen vom /zero Endpoint im server.py."""
-    global TARE_R1_LONG_CM, TARE_R2_LONG_CM, TARE_R1_LAT_CM, TARE_R2_LAT_CM, TARE_SET_AT
+    global TARE_R1_LONG_CM, TARE_R2_LONG_CM, TARE_SET_AT
     TARE_R1_LONG_CM = float(R1_longitudinal_offset_cm)
     TARE_R2_LONG_CM = float(R2_longitudinal_offset_cm)
-    TARE_R1_LAT_CM = float(R1_lateral_offset_cm)
-    TARE_R2_LAT_CM = float(R2_lateral_offset_cm)
     TARE_SET_AT = datetime.now().strftime('%H:%M:%S')
     print(f"[Tare] Nullpunkt gesetzt um {TARE_SET_AT}: "
-          f"R1_long={TARE_R1_LONG_CM:.2f}cm R2_long={TARE_R2_LONG_CM:.2f}cm "
-          f"R1_lat={TARE_R1_LAT_CM:.2f}cm R2_lat={TARE_R2_LAT_CM:.2f}cm")
+          f"R1_long={TARE_R1_LONG_CM:.2f}cm  R2_long={TARE_R2_LONG_CM:.2f}cm  "
+          f"(lateral bleibt unveraendert)")
     return TARE_SET_AT
 
 
 def clear_tare():
     """Setzt Tare-Offsets zurück auf 0."""
-    global TARE_R1_LONG_CM, TARE_R2_LONG_CM, TARE_R1_LAT_CM, TARE_R2_LAT_CM, TARE_SET_AT
+    global TARE_R1_LONG_CM, TARE_R2_LONG_CM, TARE_SET_AT
     TARE_R1_LONG_CM = 0.0
     TARE_R2_LONG_CM = 0.0
-    TARE_R1_LAT_CM = 0.0
-    TARE_R2_LAT_CM = 0.0
     TARE_SET_AT = None
     print("[Tare] Nullpunkt geloescht.")
 
@@ -142,7 +140,19 @@ transformer.transform(50, -80)
 
 stop_event = threading.Event()
 measurement_running = False
-csv_data_buffer = [] 
+csv_data_buffer = []
+
+
+def _fmt(v):
+    """Robuste Float-Formatierung für CSV-Werte.
+    str() gibt bei kleinen Floats wissenschaftliche Notation (z.B. '1e-05'),
+    was Excel als Text interpretiert und mit Apostroph importiert.
+    f"{v:.6f}" liefert 6 Nachkommastellen ohne wissenschaftliche Notation."""
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return f"{v:.6f}"
+    return str(v)
 
 #-----------------------Threads----------------------
 
@@ -222,7 +232,7 @@ def BaseThread():
                                 
                     
             B_Message.queue.clear()
-            Base_outline = ";".join(map(str, [
+            Base_outline = ";".join(map(_fmt, [
                 Base_lon, Base_lat, Base_NumSV, Base_HDOP, Base_alt, Base_time, Base_Speed, Base_Heading
             ]))
 
@@ -389,7 +399,7 @@ def Rover1_Thread():
 
         #-------------Message-----------------
                 R_1_Message.queue.clear()
-                Rover_1_outline = ";".join(map(str, [
+                Rover_1_outline = ";".join(map(_fmt, [
                     rel_heading,abs_heading, R1_angular_velocity, delta_heading, mov_avg_heading,
                     Rover_date, Rover_time, Rover_Quality,
                     Rover_lon, Rover_lat, Rover_accHeading,
@@ -531,7 +541,7 @@ def Rover2_Thread():
 
         #-------------Message-----------------
                 R_2_Message.queue.clear()
-                Rover_2_outline = ";".join(map(str, [
+                Rover_2_outline = ";".join(map(_fmt, [
                     rel_heading, abs_heading, R2_angular_velocity, delta_heading, mov_avg_heading, 
                     Rover_date, Rover_time, Rover_Quality,
                     Rover_lon, Rover_lat, Rover_accHeading,
@@ -669,7 +679,7 @@ def Rover3_Thread():
 
                 # Message für Logger
                 R_3_Message.queue.clear()
-                Rover_3_outline = ";".join(map(str, [
+                Rover_3_outline = ";".join(map(_fmt, [
                     rel_heading, abs_heading, R3_angular_velocity, delta_heading, mov_avg_heading,
                     Rover_date, Rover_time, Rover_Quality,
                     Rover_lon, Rover_lat, Rover_accHeading,
@@ -795,12 +805,6 @@ def csv_logger_thread_buffered():
                 R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
                 sym_yaw_raw, sym_yaw_filt,
                 asym_yaw_raw, asym_yaw_filt,
-                # Tare-bereinigte Spalten (Rohwerte minus aktuelle Tare-Offsets)
-                (lon_r1_cm - TARE_R1_LONG_CM) if lon_r1_cm is not None else None,
-                (lon_r2_cm - TARE_R2_LONG_CM) if lon_r2_cm is not None else None,
-                (lat_r1_cm - TARE_R1_LAT_CM) if lat_r1_cm is not None else None,
-                (lat_r2_cm - TARE_R2_LAT_CM) if lat_r2_cm is not None else None,
-                TARE_SET_AT if TARE_SET_AT else ""
             ])
 
             line = (f"{R_1_msg.replace('.', ',')};"
@@ -891,11 +895,9 @@ def export_to_csv():
                 # Gefilterte Schwingungs-Metriken (Moving-Average, Fensterbreite aus config.json: FILTER_WINDOW_S)
                 "VarA_R1_longitudinal_filtered_cm", "VarA_R2_longitudinal_filtered_cm",
                 "Symmetric_Yaw_raw_cm", "Symmetric_Yaw_filtered_cm",
-                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm",
-                # Tare-bereinigte Werte (Roh minus aktuelle Tare-Offsets, vom UI-Button "Set Zero" gesetzt)
-                "VarA_R1_longitudinal_tared_cm", "VarA_R2_longitudinal_tared_cm",
-                "VarA_R1_lateral_tared_cm", "VarA_R2_lateral_tared_cm",
-                "Tare_set_at"
+                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm"
+                # Tare-Werte bewusst NICHT im CSV — Tare gilt nur fuer die Live-Anzeige.
+                # Roh-Werte longitudinal/lateral sind oben bereits enthalten.
             ])
             #------Daten schreiben--------
             for row in csv_data_buffer:
