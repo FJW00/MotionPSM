@@ -9,7 +9,11 @@ Stand: 2026-05-11.
 
 ## Wer und Was
 
-**Person:** Falk-Jakob Weigand, HSWT-Absolvent (Bachelor 2025). Gründet aktuell **FJW Systems** (Einzelunternehmen in Vorbereitung). Hauptberuf parallel: Vollzeit-Job Mo–Fr 7–16 Uhr. Codet abends + Wochenenden.
+**Person:** Falk-Jakob Weigand, HSWT-Absolvent (Bachelor 2025). Gründer **FJW Systems** (Einzelunternehmen, **angemeldet 20.05.2026** über Bayern-Serviceportal, nicht im Handelsregister eingetragen, Regelbesteuerung). Hauptberuf parallel: Vollzeit-Job Mo–Fr 7–16 Uhr. Codet abends + Wochenenden.
+
+**Gewerbe-Tätigkeitsbeschreibung (Stand 20.05.2026):**
+
+> Entwicklung, Herstellung, Vertrieb, Vermietung und Integration von Mess-, Sensor-, Automatisierungs- und Assistenzsystemen für die Land- und Forstwirtschaft sowie industrielle Anwendungen; Entwicklung, Vertrieb und Betrieb von GNSS-, RTK-, Telemetrie-, IoT- und datenbasierten Systemen; Erbringung von Mess-, Vermessungs-, Analyse- und Monitoringdienstleistungen mittels GNSS-, Sensor-, Drohnen- und Kameratechnologie einschließlich Luftbildauswertung, Vegetationsanalyse sowie Erstellung von Applikations- und Bewirtschaftungskarten für Düngung, Pflanzenschutz und teilflächenspezifische Landwirtschaft; Entwicklung von Hard- und Software, Embedded Systems sowie Datenverarbeitungs- und Cloudlösungen einschließlich Anwendungen im Bereich künstlicher Intelligenz, Automatisierung und Digitalisierung; technische Beratung, Schulung sowie Forschungs- und Entwicklungsdienstleistungen in den genannten Bereichen; Entwicklung, Herstellung und Nachrüstung elektronischer, mechanischer und technischer Komponenten, Sonderlösungen und Prototypen für landwirtschaftliche, kommunale und industrielle Anwendungen; Handel mit Zubehör, Ersatzteilen, elektronischen Baugruppen und technischen Komponenten.
 
 **Produkt:** **MotionPSM** — Low-Cost GNSS-basiertes Mess-System zur Erfassung der Gestängebewegungen von Pflanzenschutzspritzen. Soll Landwirten / Maschinenherstellern eine günstige Möglichkeit geben, Boom-Schwingungen quantitativ zu erfassen.
 
