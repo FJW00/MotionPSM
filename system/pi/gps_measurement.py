@@ -809,8 +809,9 @@ def csv_logger_thread_buffered():
                 R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
                 sym_yaw_raw, sym_yaw_filt,
                 asym_yaw_raw, asym_yaw_filt,
-                # Tare-bereinigte longitudinal + Tare-Timestamp
+                # Tare-bereinigte longitudinal + die aktiven Offset-Werte + Timestamp
                 lon_r1_tared, lon_r2_tared,
+                TARE_R1_LONG_CM, TARE_R2_LONG_CM,
                 TARE_SET_AT if TARE_SET_AT else "",
             ])
 
@@ -903,10 +904,11 @@ def export_to_csv():
                 "VarA_R1_longitudinal_filtered_cm", "VarA_R2_longitudinal_filtered_cm",
                 "Symmetric_Yaw_raw_cm", "Symmetric_Yaw_filtered_cm",
                 "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm",
-                # Tare-bereinigte longitudinal-Werte fuer direkte Auswertung in Excel.
-                # Bei nicht aktivem Tare = identisch zu den Roh-Werten oben.
-                # Tare_set_at zeigt an wann Set Zero gedrueckt wurde (leer wenn keine Tare aktiv).
+                # Tare-bereinigte longitudinal-Werte + die zugehoerigen Offset-Werte selbst.
+                # Bei nicht aktivem Tare = tared identisch zu Roh-Werten, Offset = 0.
+                # Tare_set_at zeigt wann Set Zero gedrueckt wurde (leer wenn keine Tare aktiv).
                 "VarA_R1_longitudinal_tared_cm", "VarA_R2_longitudinal_tared_cm",
+                "Tare_R1_longitudinal_offset_cm", "Tare_R2_longitudinal_offset_cm",
                 "Tare_set_at"
             ])
             #------Daten schreiben--------
