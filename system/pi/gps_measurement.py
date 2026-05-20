@@ -795,6 +795,10 @@ def csv_logger_thread_buffered():
             sym_yaw_filt     = (R2_longitudinal_filtered_cm - R1_longitudinal_filtered_cm) / 2.0
             asym_yaw_filt    = (R1_longitudinal_filtered_cm + R2_longitudinal_filtered_cm) / 2.0
 
+            # Tare-bereinigte longitudinal-Werte (nur longitudinal — lateral ist Hebelarm-Geometrie)
+            lon_r1_tared = (lon_r1_cm - TARE_R1_LONG_CM) if lon_r1_cm is not None else None
+            lon_r2_tared = (lon_r2_cm - TARE_R2_LONG_CM) if lon_r2_cm is not None else None
+
             calc_outline = ";".join(_csv_format(v) for v in [
                 lat_r1_cm, lat_r2_cm, lon_r1_cm, lon_r2_cm,
                 a_len, axis_heading,
@@ -805,6 +809,9 @@ def csv_logger_thread_buffered():
                 R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
                 sym_yaw_raw, sym_yaw_filt,
                 asym_yaw_raw, asym_yaw_filt,
+                # Tare-bereinigte longitudinal + Tare-Timestamp
+                lon_r1_tared, lon_r2_tared,
+                TARE_SET_AT if TARE_SET_AT else "",
             ])
 
             line = (f"{R_1_msg.replace('.', ',')};"
@@ -895,9 +902,12 @@ def export_to_csv():
                 # Gefilterte Schwingungs-Metriken (Moving-Average, Fensterbreite aus config.json: FILTER_WINDOW_S)
                 "VarA_R1_longitudinal_filtered_cm", "VarA_R2_longitudinal_filtered_cm",
                 "Symmetric_Yaw_raw_cm", "Symmetric_Yaw_filtered_cm",
-                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm"
-                # Tare-Werte bewusst NICHT im CSV — Tare gilt nur fuer die Live-Anzeige.
-                # Roh-Werte longitudinal/lateral sind oben bereits enthalten.
+                "Asymmetric_Yaw_raw_cm", "Asymmetric_Yaw_filtered_cm",
+                # Tare-bereinigte longitudinal-Werte fuer direkte Auswertung in Excel.
+                # Bei nicht aktivem Tare = identisch zu den Roh-Werten oben.
+                # Tare_set_at zeigt an wann Set Zero gedrueckt wurde (leer wenn keine Tare aktiv).
+                "VarA_R1_longitudinal_tared_cm", "VarA_R2_longitudinal_tared_cm",
+                "Tare_set_at"
             ])
             #------Daten schreiben--------
             for row in csv_data_buffer:
