@@ -133,15 +133,22 @@ FJW_Schwingung/                         <- lokaler Master-Ordner
 
 ---
 
-## Termine + Meilensteine
+## Termine + Meilensteine — laufender Fortschritt
 
-| Datum | Was |
-|---|---|
-| 14.05. (Do) — Christi Himmelfahrt | Bench-Test Rover 3 am Schreibtisch |
-| 15.05. (Fr) — Brückentag | Erste Fahrt mit Spritze |
-| 16./17.05. | Feldtest + Iterationen |
-| 06./07.06. | **Generalprobe-Wochenende** vor DLG (nicht-verhandelbar) |
-| 15.06. (Mo) bis ca. 18.06. | **DLG-Feldtage Bernburg** — Kundenterminmust-haben |
+| Datum | Was | Status |
+|---|---|---|
+| 14.05. | Bench-Test Rover 3 | ✅ |
+| 15.–17.05. | Feldtest + Iterationen, UI-Refactor, Filter, Tare | ✅ |
+| 19.05. | Steuerberater-Termin | ✅ |
+| 20.05. | **Gewerbeanmeldung** Bayern-Serviceportal | ✅ Gründungstag |
+| 22./23.05. | Testfahrt mit Tare + Base am Schlepper | ⏳ |
+| 24./25.05. | **Generalprobe-Wochenende** (vorgezogen aus 06.06.) | ⏳ |
+| 06./07.06. | Reserve-WE (Final-Touch falls nötig) | herabgestuft |
+| Vor 15.06. | Hardware: neue Box + Grundplatten Base/R3 drucken | ⏳ |
+| Vor 15.06. | Website live: Impressum + Datenschutz DSGVO-konform | ⏳ |
+| Vor 15.06. | Geschäftskonto eröffnet | ⏳ (nicht zwingend) |
+| 15.–18.06. | **DLG-Feldtage Bernburg** — erste öffentliche Demo | Hauptevent |
+| Nach 15.06. | Hardware-Aufrüstung (alle 4 Module Ground-Plane), RTCM-Löten, Cloudflare-Tunnel für Remote, Onepager-Hosting final | später |
 
 ---
 
