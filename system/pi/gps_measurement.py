@@ -721,7 +721,7 @@ def csv_logger_thread_buffered():
     tolerance_base  = 0.5   # max. iTOW-Diff Base zu Rover-Mittel
 
     while not stop_event.is_set():
-        time.sleep(0.1)
+        time.sleep(0.02)  # 50 Hz Logger-Poll, deckt 10 Hz Sampling sicher ab (Fix 22.05.2026)
 
         try:
             if (R_1_Time.empty() or R_2_Time.empty() or R_3_Time.empty()

@@ -4,6 +4,59 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-22 — Logger-Sleep-Fix: 10 Hz statt 5 Hz effektive Sample-Rate
+
+**Beobachtung aus Testfahrt 22.05.2026 (Spritze, Base+R3 am Spritzen-Chassis, R1/R2 an Gestängeenden):**
+
+Stillstands-Messung sauber (10 cm Auslenkung gemessen = 10 cm angezeigt — Geometrie + Tare + Variante A validiert).
+
+Aber während der Fahrt zeigte das CSV **iTOW-Abstände von dauerhaft ca. 200 ms** (= effektiv 5 Hz statt eingestellter 10 Hz), plus 2-3 Spitzen bei ca. 1800 ms.
+
+**Ursache:**
+
+In `system/pi/gps_measurement.py` Zeile 724 (im `csv_logger_thread_buffered`):
+
+```python
+while not stop_event.is_set():
+    time.sleep(0.1)        # 100 ms Pause vor jedem Sync-Check
+    ...
+    # 4 queue.get(), Sync-Check, 81-Spalten _fmt(), Disk-Write (~50 ms)
+```
+
+Logger-Zyklus = 100 ms Sleep + ~50 ms Verarbeitung ≈ **150 – 200 ms** → effektiv 5 – 7 Hz, egal wie schnell die Module liefern.
+
+**Verifiziert:** Die u-blox-Configs (`f9p_ucenter/Falk_weigand_config_Base/Rover1/2/3.txt`) sind alle korrekt auf 100 ms = 10 Hz konfiguriert. NICHT die Ursache war:
+- RTK-Qualität (immer Fix=4 auf allen Rovern während Test)
+- NumSV (stabil 12 für Base)
+- Module-Konfiguration (alle 4 Configs zeigen 10 Hz)
+- Pi-Thermal (jetzt mit offener Box bei 54 °C, kein Throttling)
+
+**Fix:**
+
+```python
+time.sleep(0.1) -> time.sleep(0.02)  # 50 Hz Logger-Poll-Zyklus
+```
+
+Logger wacht jetzt 5x pro 100-ms-Sample-Periode auf. Sync-Checks gelingen sofort, Queues bleiben praktisch leer. CPU-Last marginal höher (Pi 5 mit 8 GB lacht darüber).
+
+**Bewusst NICHT geändert:**
+
+Die Sync-Logik selbst (4 separate Queues, `if empty(): continue` Pattern) hat einen latent vorhandenen Architektur-Bug: bei Race-Conditions (z.B. wenn ein Modul kurz lag und die Queues unbalanced füllt) können Samples falsch zugeordnet werden. Strukturell sauberer wäre ein **iTOW-Dictionary** als zentraler Sammelpunkt. **Aber das ist ein 50-Zeilen-Refactor und kommt POST-DLG** (Ansatz C in der Architektur-Diskussion vom 22.05.).
+
+Ein zwischenzeitlich angedachter Fix mit `get_nowait()` wurde verworfen, weil er ein Daten-Verlust-Risiko mitbrächte: wenn ein Modul gerade nichts in der Queue hat, würde der erste erfolgreiche `get_nowait()` das Sample der vorherigen Module konsumieren, dann werfen — Samples wären verloren. Die original `if .empty(): continue`-Variante schützt davor.
+
+**Test offen:**
+
+- Bench-Test am Pi: Logger 60 s laufen lassen, neue CSV inspizieren. Erwartung: iTOW-Lücken durchgehend bei 100 ms +/- 20 ms (also tatsächliche 10 Hz).
+- Testfahrt nach Active-Cooler-Einbau + neue Box (siehe TODO.md Hardware): Verifikation unter realistischer Last + Vibration.
+- Die 1800-ms-Spitzen sind vermutlich USB-/Vibrations-bedingte Module-Stalls — werden vom Sleep-Fix moeglicherweise nicht vollstaendig adressiert. Beobachten und ggf. mit Architektur-Refactor (Ansatz C) post-DLG fixen.
+
+**Risiko:**
+
+Sehr gering. Eine Zeichen-Änderung, leicht rückgängig zu machen. Falls aus unerklärlichen Gründen unter sehr hoher Last (z.B. SD-Karte fast voll, anderer Prozess belegt CPU) der Logger doch CPU-bound wird, könnte die System-Reaktion träger werden — aber Pi 5 hat dafür mehr als genug Reserven.
+
+---
+
 ## 2026-05-17 — Hardware-Erkenntnis: Base muss am Schlepper, nicht am Gestänge
 
 **Beobachtung aus Test-Fahrt Records_F9P_20260516_171707_ausg.xls:**
