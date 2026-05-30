@@ -4,6 +4,72 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-30 — 5-Hz-Problem auf USB gelöst: NMEA-Multicast war die Ursache
+
+**Befund:** Trotz CFG-RATE-MEAS = 100 ms (= 10 Hz) auf allen Modulen lieferte der CSV-Logger nur 5 Hz effektive Sample-Rate (Lücken bei 200 ms statt 100 ms). Der Sleep-Fix vom 22.05. (time.sleep 0.1 -> 0.02) hatte keinen Effekt — er war notwendig aber nicht ausreichend.
+
+**Diagnose:**
+
+Per `cat /dev/serial/by-id/usb-R_N-if00 | wc -c` über 5 Sekunden gemessen, mit Antennen + RTK:
+- Base: ca. 82 KB / 5s
+- Rover 1/2/3: je ca. 44 KB / 5s (= halb so viel wie Base)
+
+Genau-Hz-Test mit pyubx2 zeigte: alle Rover bei NAV-RELPOSNED nur 5 Hz, Base bei NAV-PVT 10 Hz. CFG-RATE war aber bei allen Modulen korrekt auf 100 ms gesetzt — verifiziert in u-center.
+
+Tiefe Konfig-Analyse via UBX_CONFIG_DATABASE (pyubx2): die u-blox Configs hatten **NMEA-GGA, NMEA-RMC, NMEA-VTG auf ALLEN 5 Ports aktiviert** (I2C + UART1 + UART2 + USB + SPI). Plus NAV-RELPOSNED auf 3 Ports (UART2 + USB + SPI). Das sind 18 Output-Operationen pro Mess-Zyklus pro Rover. Bei 10 Hz Mess-Rate intern hat der ZED-F9P sich **auf 5 Hz NAV-RELPOSNED-Output gedrosselt**, weil er die 180 Output-Operationen pro Sekunde plus die normale Mess-Verarbeitung nicht parallel schaffte.
+
+Die Base war NICHT betroffen: sie sendet NAV-PVT statt NAV-RELPOSNED (kleinere Message) und hat ihren UART2-RTCM-Output (Moving-Base-Korrektur zu Rovern) der nicht mit NMEA-Multicast konkurriert.
+
+**Fehlversuch v1 (Configs `usb_only_2026-05-25/`, NICHT im Repo gelandet):**
+
+Erstes Skript hatte geschätzte Item-IDs für die CFG-MSGOUT-Keys verwendet. Annahme war: I2C, UART1, UART2, USB, SPI laufen sequentiell bei 0xXX, 0xXX+1, +2, +3, +4. Für die meisten Messages stimmt das (NMEA-GGA: I2C=BA, UART1=BB, UART2=BC, USB=BD, SPI=BE) — aber **NAV-RELPOSNED beginnt bei 0x8D statt 0x8C**:
+- NAV-RELPOSNED I2C = 0x8D, UART1 = 0x8E, UART2 = **0x8F**, USB = **0x90**, SPI = 0x91
+
+Mein Off-by-one-Skript identifizierte 0x8F als USB (= war UART2) und 0x90 als SPI (= war USB). Effekt nach Flash auf Rover 1/2/3: USB-Output abgeschaltet, UART2-Output aktiv geblieben — Pi konnte kein NAV-RELPOSNED mehr lesen. Falk hat das in u-center selbst entdeckt ("USB = 0, UART2 = 1, ist das richtig?").
+
+**Lösung v2 (`usb_only_v2_2026-05-30/`, dieser Commit):**
+
+Neues Skript nutzt direkt `pyubx2.UBX_CONFIG_DATABASE` als autoritative u-blox-Doku-Quelle (1268 Config-Keys). Pro Key kann der Port aus dem Namen extrahiert werden, Item-IDs sind exakt. Pro Original-Config: nur USB-Variants behalten = 1, alle anderen UBX/NMEA-Ports auf 0. RTCM-Keys (high byte != 0) bleiben unangetastet — kritisch fuer Base-UART2-RTCM-Output.
+
+Vier Configs erzeugt:
+- `Falk_weigand_config_Base_USBonly_v2.txt`
+- `Falk_weigand_config_Rover1_USBonly_v2.txt`
+- `Falk_weigand_config_Rover2_USBonly_v2.txt`
+- `Falk_weigand_config_Rover3_USBonly_v2.txt`
+
+Falk hat R1/R2/R3 in u-center geflasht + persistent in BBR/Flash gespeichert (Base blieb auf Original-Stand — sie war nicht der Bottleneck).
+
+**Verifikation:**
+
+pyubx2-Hz-Test direkt auf Pi (alle Module ohne Antennen, am Schreibtisch):
+- Base: NAV-PVT 10.0 Hz, NMEA-GGA/RMC/VTG je 10.0 Hz
+- Rover 1: NAV-RELPOSNED **10.0 Hz**, NMEA je 10.0 Hz
+- Rover 2: NAV-RELPOSNED **10.0 Hz**, NMEA je 10.0 Hz
+- Rover 3: NAV-RELPOSNED **10.0 Hz**, NMEA je 10.0 Hz
+
+Anschliessend Hof-Test mit Antennen + RTK + Tare-Sequenz (CSV `Records_F9P_20260530_131028.csv`):
+- 10 cm physisch ausgelenkt -> -10 cm gemessen in `VarA_R2_longitudinal_tared_cm` (Zeilen 150-175)
+- 20 cm physisch ausgelenkt -> -20 cm gemessen (Zeilen 180-200)
+- Zuruck auf Stand -> 0 cm +/- 1.5 cm Rauschen
+
+Geometrie + Tare-Logik damit zum 2. Mal validiert (nach 22.05. mit 10 cm). Mess-Konzept ist solid fuer DLG.
+
+**Test offen:**
+
+CSV-Auswertung der iTOW-Differenzen zeigt: **62.4% der Zeilen-Uebergaenge bei 100 ms** (= Soll), aber 25.1% bei 200 ms, 7.5% bei 300-500 ms, 5% Spikes bis 2600 ms. Effektive mittlere Rate: 5.29 Hz. **Die Module liefern jetzt sauber 10 Hz, aber der CSV-Logger droppt 38% der Samples** wegen Race-Conditions in der 3-Wege-Sync-Logik. Das ist die alte Logger-Architektur mit 4 separaten `queue.clear() + put()` pro Producer — bei Phase-Versatz der Module misst die Sync-Toleranz fail.
+
+Naechster Schritt (separater Branch `refactor/logger-itow-dict`): Logger umbauen auf zentralen iTOW-keyed dict statt 4 unsync'd Queues. Erwartung: > 95% bei 100 ms.
+
+**Risiko des aktuellen Stands:**
+
+Fuer DLG-Boom-Schwingungsmessung (0.5-2 Hz Frequenzinhalt) ist 5 Hz Nyquist-konform, also funktional ausreichend. Aber 38% Sample-Drops sehen in einer Live-Demo unprofessionell aus, und die Spikes bis 2.6 s reissen wirklich Loecher in die Auswertung. Refactor sollte vor 15.06. fertig sein.
+
+**Konfig-Hinweis fuer zukuenftige UBX-Modifikationen:**
+
+NIEMALS Item-IDs schaetzen oder aus Beobachtungen abloeschen. Immer `from pyubx2 import UBX_CONFIG_DATABASE` und das Reverse-Lookup nutzen. 1268 Keys decken praktisch alle ZED-F9P-Settings ab und stammen direkt aus der u-blox Interface Description.
+
+---
+
 ## 2026-05-22 — Logger-Sleep-Fix: 10 Hz statt 5 Hz effektive Sample-Rate
 
 **Beobachtung aus Testfahrt 22.05.2026 (Spritze, Base+R3 am Spritzen-Chassis, R1/R2 an Gestängeenden):**
