@@ -3,7 +3,7 @@
 **Diese Datei ist das Cold-Start-Briefing für jede neue Cowork-Session.**
 Falk sagt zu Beginn: "Lies erst `documentation/PROJECT_CONTEXT.md`" — und du bist sofort drin.
 
-Stand: 2026-05-11.
+Stand: 2026-05-30.
 
 ---
 
@@ -19,18 +19,20 @@ Stand: 2026-05-11.
 
 **Kontakt:**
 - Email: falkweigand1304@gmail.com / info@fjw-systems.com
-- Domain: fjw-systems.de, fjw-systems.com (Onepager in Vorbereitung mit carrd.co)
+- Domain: fjw-systems.de, fjw-systems.com — **Onepager LIVE seit 30.05.2026** (Impressum + Datenschutz inkl.)
 - Firmensitz: Steinig 1a, 97956 Werbach
 
 ---
 
 ## Hardware-Architektur
 
-- **Base** (u-blox ZED-F9P, C099 Board): zentrale RTK-Basis. **MUSS am Schlepper / Anbaubock fest sitzen, NICHT am Gestänge** (sonst werden die Rover-Schwingungen systematisch verfälscht — Erkenntnis aus 17.05.-Test). Maximale Sky-View. Sendet RTCM-Korrekturen via UART2 an die Rover.
+- **Base** (u-blox ZED-F9P, C099 Board): zentrale RTK-Basis. **MUSS auf einem starren Rahmen sitzen, NICHT am Gestänge** (sonst werden Rover-Schwingungen systematisch verfälscht — Erkenntnis aus 17.05.-Test). Geeignet: Schlepperdach/Kabine ODER Spritzen-Chassis (sofern lang genug für ~3 m Baseline Base→R3 — Falk's Spritze hat das, getestet 22.05./30.05.). Maximale Sky-View. Sendet RTCM-Korrekturen via UART2 an die Rover.
 - **Rover 1** (ZED-F9P): **links** am Gestänge montiert (vom Fahrer aus gesehen).
 - **Rover 2** (ZED-F9P): **rechts** am Gestänge.
 - **Rover 3** (ZED-F9P): **vorne in Fahrtrichtung am Schlepper** (NICHT am Gestänge), definiert die Längsachse Base→R3.
-- **Raspberry Pi 4**: zentrale Steuerung. Liest alle Module über USB ein (`/dev/serial/by-id/...`), läuft Flask-Server zur Live-Anzeige + CSV-Logger.
+- **Raspberry Pi 5 (8 GB)**: zentrale Steuerung (seit Ende 2025 von Pi 4 upgegradet). Liest alle Module über USB ein (`/dev/serial/by-id/...`), läuft Flask-Server zur Live-Anzeige + CSV-Logger.
+  - **Active Cooler** (GeeekPi Armor Lite V5) seit 30.05.: max. 50°C bei 32°C Außentemperatur + Sonne — Throttling-Problem (87.8°C in alter Box) gelöst.
+  - **Neue ASA-Box** mit Belüftungsschlitzen + Heatsink-Aussparung.
 - **Antennenhalter**: STEP-Files in `hardware/f9p/`. Falks Eigenkonstruktion mit Kamera-Rohrklemmen — vibrationsfest, wird übernommen für alle Aufbauten.
 
 **RTK-Modus:** Moving-Base. Jeder Rover bekommt RTCM von der Base und liefert `relPosNED` (Position relativ zur Base) mit RTK-Genauigkeit (~cm).
@@ -56,7 +58,7 @@ Stand: 2026-05-11.
   - **Variante B (Vergleich):** Differenzvektoren R3→R1 und R3→R2 → Distanz + Heading, direkt aus relPosNED-Diff.
 - Beides wird ins CSV geloggt (`VarA_*` und `VarB_*` Spalten am Ende).
 
-### CSV-Layout (81 Spalten, Stand 17.05.)
+### CSV-Layout (81 Spalten, Stand 17.05. — unverändert seit Tare/Filter-Iteration)
 1. R1 (17 Spalten) — Heading-Stats, Position, Quality
 2. R2 (17)
 3. R3 (17)
@@ -92,7 +94,8 @@ FJW_Schwingung/                         <- lokaler Master-Ordner
 │   │   │   └── autostart_schwingung_fw.sh
 │   │   ├── config/
 │   │   │   ├── config.example.json     <- Template (im Repo)
-│   │   │   └── config.json             <- echte COM-Port-IDs (.gitignored, nur lokal/am Pi)
+│   │   │   ├── config.json             <- echte COM-Port-IDs (.gitignored, nur lokal/am Pi)
+│   │   │   └── f9p_ucenter/usb_only_v2_2026-05-30/   <- Aktive u-blox Configs (USB-only Outputs, 10 Hz)
 │   │   └── analysis/
 │   │       └── Auswertungs_Datei.xlsx  <- Excel-Template Prüfprotokoll
 │   ├── hardware/                       <- STEP/SLDPRT-Modelle Halter, Box
@@ -128,8 +131,10 @@ FJW_Schwingung/                         <- lokaler Master-Ordner
 
 ## Branches
 
-- `main` — sauberer Stand nach Reset (11.05.)
-- `feature/rover3` — Rover-3-Erweiterung (Code-Erweiterung + Visualisierung)
+- `main` — **Production-Stand** (54d1dd4): USB-only Configs v2 + Sleep-Fix + alle DEVLOG-Einträge.
+- `refactor/logger-itow-dict` — **in Test** (a0fb3f3): Refactor C — iTOW-Dict-Logger statt 4 unsync'd Queues. Behebt die 38%-Sample-Drop-Race in der alten Architektur. Bench-Test am Pi am 31.05.2026, bei Erfolg Merge nach main.
+- `refactor/cleanup` — historischer Branch (Stufe-2-Refactor), unverändert seit Mai
+- `feature/rover3` — gelöscht (komplett in main gemerged, 30.05.)
 
 ---
 
@@ -141,14 +146,27 @@ FJW_Schwingung/                         <- lokaler Master-Ordner
 | 15.–17.05. | Feldtest + Iterationen, UI-Refactor, Filter, Tare | ✅ |
 | 19.05. | Steuerberater-Termin | ✅ |
 | 20.05. | **Gewerbeanmeldung** Bayern-Serviceportal | ✅ Gründungstag |
-| 22./23.05. | Testfahrt mit Tare + Base am Schlepper | ⏳ |
-| 24./25.05. | **Generalprobe-Wochenende** (vorgezogen aus 06.06.) | ⏳ |
-| 06./07.06. | Reserve-WE (Final-Touch falls nötig) | herabgestuft |
-| Vor 15.06. | Hardware: neue Box + Grundplatten Base/R3 drucken | ⏳ |
-| Vor 15.06. | Website live: Impressum + Datenschutz DSGVO-konform | ⏳ |
+| 22.05. | Testfahrt mit Tare: 10 cm Stand-Auslenkung exakt gemessen | ✅ (Geometrie + Tare validiert) |
+| 22.05. | Pi-Thermal-Problem entdeckt (87.8°C → Sample-Lücken) | ✅ diagnostiziert |
+| 23.05. | Active Cooler bestellt (GeeekPi Armor Lite V5) | ✅ |
+| 24./25.05. | Generalprobe-Wochenende mit neuer Box + Cooler (50°C bei 32°C/Sonne) | ✅ |
+| 25.05. | 5-Hz-Problem entdeckt (CFG-RATE OK aber NMEA-Multicast drosselt F9P) | ✅ diagnostiziert |
+| 26.05. | USB-only Configs v1 — fehlerhaft (off-by-one Item-IDs) | ✅ verworfen |
+| 30.05. | USB-only Configs v2 mit pyubx2-DB → 10 Hz auf allen Modulen | ✅ commit 54d1dd4 |
+| 30.05. | Hof-Test: 10/20 cm Tare-Auslenkung exakt gemessen | ✅ Geometrie 2× validiert |
+| 30.05. | Logger-Refactor C (iTOW-Dict) implementiert | ✅ commit a0fb3f3 (Branch) |
+| 30.05. | Grundplatten Base + R3 bestellt | ✅ |
+| 30.05. | feature/rover3 → main gemerged, Repo aufgeräumt | ✅ |
+| 30.05. | **fjw-systems.de LIVE** (Impressum + Datenschutz) | ✅ 🎉 |
+| **31.05. 09:00** | **Bench-Test Refactor C am Pi** | 📅 scheduled |
+| Anfang Juni | Echte Testfahrt mit Refactor + USB-only + Hardware-Updates | ⏳ |
+| Anfang Juni | ZTE-WLAN-Port-Forwarding fixen (Tablet↔Pi externer Zugang) | ⏳ |
+| Anfang Juni | Autostart am Pi aktivieren (`install_autostart.sh`) | ⏳ |
+| 06./07.06. | Reserve-WE für letzte Fahrtests + Bug-Fix | herabgestuft |
 | Vor 15.06. | Geschäftskonto eröffnet | ⏳ (nicht zwingend) |
-| 15.–18.06. | **DLG-Feldtage Bernburg** — erste öffentliche Demo | Hauptevent |
-| Nach 15.06. | Hardware-Aufrüstung (alle 4 Module Ground-Plane), RTCM-Löten, Cloudflare-Tunnel für Remote, Onepager-Hosting final | später |
+| **15.–18.06.** | **DLG-Feldtage Bernburg** — erste öffentliche Demo | Hauptevent |
+| Juli 2026 | GitHub-PAT von Classic auf Fine-grained rotieren (läuft August aus) | 📅 |
+| Nach 15.06. | RTCM-Löten, Cloudflare-Tunnel (`measure1.fjw-systems.com`), Pi-User/Hostname-Migration | später |
 
 ---
 
@@ -165,26 +183,33 @@ FJW_Schwingung/                         <- lokaler Master-Ordner
 
 ## Tech-Stack
 
-- **Python 3** (Pi): Flask, pyserial, pyubx2, pyproj, numpy, geopy
+- **Python 3** (Pi 5, venv): Flask, pyserial, pyubx2, pyproj, numpy, geopy
 - **Frontend:** Vanilla HTML + Chart.js (CDN)
-- **GNSS:** u-blox ZED-F9P, Moving-Base, 10 Hz, RTCM via UART2
+- **GNSS:** u-blox ZED-F9P, Moving-Base, **10 Hz** (effektiv erreicht nach USB-only Configs v2 + Refactor C). Baudrate 460800 auf USB.
+- **LTE-Konnektivität:** ZTE-WLAN-Stick + Thingsmobile IoT-SIM in der Box (für DLG-Stand-WLAN; Port-Forwarding für externen Zugriff noch zu fixen)
 - **Datenformat:** CSV mit `;`-Separator und `,`-Decimal (Excel-DE-kompatibel)
 
 ---
 
 ## Offene Punkte / Ideen für später
 
-- **Remote-Zugriff `measure1.fjw-systems.com`** (NACH 15.06.) — Falk will Frontend per Domain erreichbar machen statt nur per lokaler IP. Optionen: Cloudflare-Tunnel (braucht Nameserver-Umstellung weg von Strato) oder Pi-eigener WLAN-AP. **Falk explizit darum gebeten ihn zu erinnern.**
-- **Pi-User + Hostname migrieren** (NACH 15.06.) — derzeit User `ba_weigand`, Hostname `BA_Weigand` aus der BA-Zeit. Sauberer wäre z.B. User `motionpsm` + Hostname `motionpsm-pi-01`. Aufwand mittel (Home-Verzeichnis umbenennen, SSH-Keys neu, Pfade anpassen). Falk erinnern.
-- **Excel-Auto-Fill** für Prüfprotokoll (Prio 3, nach 15.06.)
-- **History-Bereinigung** des alten `MotionPSM_Old`-Repos (löschen nach erfolgreichem Wochenend-Test)
-- **Onepager-Website** fjw-systems.de (Prio 3 — nach 15.06.; statt carrd evtl. eigenes HTML/Tailwind über Netlify)
-- **NumSV / HDOP / accHeading** im Frontend zeigen (derzeit nur Fix-Quality) — kleiner Refactor in gps_measurement.py: globale Vars ergänzen
-- **Gewerbeanmeldung** + Steuerberater-Termin (Falk macht selbst)
+**Vor DLG (15.06.):**
+- **Bench-Test Refactor C** (31.05. 09:00 scheduled): wenn >95% iTOW-Lücken bei 100 ms → Merge nach main
+- **ZTE-WLAN-Port-Forwarding**: WLAN-Verbindung Tablet↔Pi funktioniert, aber externer Port (Remote-Zugriff aufs Frontend) klemmt. ZTE-Admin-Interface checken.
+- **Autostart am Pi aktivieren** (`bash system/pi/install_autostart.sh`) — Code liegt schon, war für "nach Generalprobe" geplant, jetzt der richtige Moment
+- **Echte Testfahrt** mit allen Updates zusammen (Refactor C + USB-only + Box + Cooler)
+
+**Nach DLG:**
+- **Remote-Zugriff `measure1.fjw-systems.com`** — Cloudflare-Tunnel (braucht Nameserver-Umstellung weg von Strato) ODER Pi-eigener WLAN-AP als Fallback
+- **Pi-User + Hostname migrieren** — derzeit User `ba_weigand`, Hostname `BA_Weigand` aus der BA-Zeit. Sauberer wäre `motionpsm` + `motionpsm-pi-01`
+- **Base-Config mit USBonly_v2 nachflashen** — war beim 5-Hz-Fix nicht zwingend (Base war nicht der Engpass), nur für Konsistenz
+- **NumSV / HDOP / accHeading** im Frontend zeigen
+- **GitHub-PAT** von Classic auf Fine-grained umstellen (Sicherheit)
+- **Mail-/Kalender-MCP** (Google Workspace) — Cowork-Connector
 
 ## Hardware-Detail: udev-Regeln am Pi
 
-Falk hat udev-Regeln eingerichtet, die die F9P-Module unter festen Kurz-Namen mappen:
+Falk hat udev-Regeln eingerichtet, die die F9P-Module unter festen Kurz-Namen mappen (Pi-User noch `ba_weigand` aus BA-Zeit, Migration post-DLG geplant):
 - `/dev/serial/by-id/usb-B_B-if00` (Base)
 - `/dev/serial/by-id/usb-R_1-if00` (Rover 1, links)
 - `/dev/serial/by-id/usb-R_2-if00` (Rover 2, rechts)
