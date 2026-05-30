@@ -90,15 +90,19 @@ _r1_long_filter_buf = deque(maxlen=2)  # maxlen wird in start_measurement() neu 
 _r2_long_filter_buf = deque(maxlen=2)
 
 #-------Globale Variablen für Base und Rover--------
-B_Time = queue.Queue()
-B_Message = queue.Queue()
+# === Refactor C (2026-05-30): zentrales iTOW-Dict statt 8 unsync'd Queues ===
+# Producer schreiben per add_sample(itow, source, payload) ins Dict.
+# Consumer (csv_logger_thread_buffered) iteriert sortiert über iTOWs:
+#   wenn alle 4 Sources da → CSV-Zeile + Eintrag löschen
+#   wenn iTOW älter als SAMPLE_MAX_AGE_MS ohne komplett → drop
+samples_lock = threading.Lock()
+samples_by_itow = {}  # int iTOW (ms) -> {"r1": {...}, "r2": {...}, "r3": {...}, "base": {...}}
+SAMPLE_MAX_AGE_MS = 300  # Drop-Threshold für unvollständige Samples
 BaT_exists = False
 Bmsg_Exists  = False
 base_calc_heading_buffer = deque(maxlen=10)
 base_heading_smooth_buffer = deque(maxlen=5)  
 
-R_1_Message = queue.Queue()
-R_1_Time = queue.Queue()
 Ro_1_T_exists = False
 R_1_msg_Exits = False
 rover1_vibration_buffer = deque(maxlen=30)
@@ -107,8 +111,6 @@ heading_buffer_linear_1 = deque(maxlen=20)
 heading_buffer_delta_1 = deque(maxlen=2)
 rel_heading_buffer_1 = deque(maxlen=lenght_mov_avg)
 
-R_2_Message = queue.Queue()
-R_2_Time = queue.Queue()
 Ro_2_T_exists = False
 R_2_msg_Exits = False
 rover2_vibration_buffer = deque(maxlen=30)
@@ -117,8 +119,6 @@ heading_buffer_linear_2 = deque(maxlen=20)
 heading_buffer_delta_2 = deque(maxlen=2)
 rel_heading_buffer_2 = deque(maxlen=lenght_mov_avg)
 
-R_3_Message = queue.Queue()
-R_3_Time = queue.Queue()
 Ro_3_T_exists = False
 R_3_msg_Exits = False
 rover3_vibration_buffer = deque(maxlen=30)
@@ -153,6 +153,23 @@ def _fmt(v):
     if isinstance(v, float):
         return f"{v:.6f}"
     return str(v)
+
+
+def add_sample(itow, source, payload):
+    """Producer-Helper (Refactor C). Speichert Sample-Daten gruppiert nach iTOW.
+
+    Args:
+        itow: GPS-Time-of-Week in ms (von NAV-PVT.iTOW / NAV-RELPOSNED.iTOW)
+        source: einer von 'base', 'r1', 'r2', 'r3'
+        payload: dict mit 'outline' (CSV-String) und optional 'relNED' (N,E,D in m)
+    """
+    if itow is None or itow <= 0:
+        return
+    itow = int(itow)
+    with samples_lock:
+        bucket = samples_by_itow.setdefault(itow, {})
+        bucket[source] = payload
+
 
 #-----------------------Threads----------------------
 
@@ -222,8 +239,6 @@ def BaseThread():
 
             elif parsed_data.identity == 'NAV-PVT':
                 Base_time = parsed_data.iTOW
-                B_Time.queue.clear()
-                B_Time.put(Base_time) 
 
             elif parsed_data.identity == 'GNVTG':
                 B_Speed = parsed_data.sogk 
@@ -231,12 +246,12 @@ def BaseThread():
                 #Base_Heading = parsed_data.cogt
                                 
                     
-            B_Message.queue.clear()
             Base_outline = ";".join(map(_fmt, [
                 Base_lon, Base_lat, Base_NumSV, Base_HDOP, Base_alt, Base_time, Base_Speed, Base_Heading
             ]))
-
-            B_Message.put(Base_outline) 
+            # Sample nur bei NAV-PVT-Empfang triggern (= 1× pro Mess-Periode mit definiertem iTOW)
+            if parsed_data.identity == 'NAV-PVT':
+                add_sample(Base_time, "base", {"outline": Base_outline})
             #print('Base:',Base_outline)
 
 def Rover1_Thread():
@@ -284,8 +299,6 @@ def Rover1_Thread():
 
             elif parsed_data.identity == 'NAV-RELPOSNED': 
                 Rover_time = parsed_data.iTOW
-                R_1_Time.queue.clear()
-                R_1_Time.put(Rover_time)              
                 Rover_accHeading = parsed_data.accHeading
                 # u-blox NAV-RELPOSNED: relPosN/E/D in cm (raw int), relPosHPN/E/D in 0.1 mm.
                 # Gesamtposition in Metern: (cm-Wert + HPN * 0.01_cm) * 0.01 = m
@@ -398,15 +411,17 @@ def Rover1_Thread():
                         delta_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
 
         #-------------Message-----------------
-                R_1_Message.queue.clear()
                 Rover_1_outline = ";".join(map(_fmt, [
                     rel_heading,abs_heading, R1_angular_velocity, delta_heading, mov_avg_heading,
                     Rover_date, Rover_time, Rover_Quality,
                     Rover_lon, Rover_lat, Rover_accHeading,
                     Rover_N, Rover_E, Rover_D, Rover_alt, height_boom, Rover_Speed
                 ]))
-                
-                R_1_Message.put(Rover_1_outline)
+                if parsed_data.identity == 'NAV-RELPOSNED':
+                    add_sample(Rover_time, "r1", {
+                        "outline": Rover_1_outline,
+                        "relNED": last_relNED_r1
+                    })
                 #print("Rover1:",Rover_1_outline)
 
 def Rover2_Thread():
@@ -454,8 +469,6 @@ def Rover2_Thread():
 
             elif parsed_data.identity == 'NAV-RELPOSNED':
                 Rover_time = parsed_data.iTOW
-                R_2_Time.queue.clear()
-                R_2_Time.put(Rover_time)
                 Rover_accHeading = parsed_data.accHeading
                 # u-blox NAV-RELPOSNED: relPosN/E/D in cm (raw int), relPosHPN/E/D in 0.1 mm.
                 # Gesamtposition in Metern: (cm-Wert + HPN * 0.01_cm) * 0.01 = m
@@ -540,7 +553,6 @@ def Rover2_Thread():
                         delta_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
 
         #-------------Message-----------------
-                R_2_Message.queue.clear()
                 Rover_2_outline = ";".join(map(_fmt, [
                     rel_heading, abs_heading, R2_angular_velocity, delta_heading, mov_avg_heading, 
                     Rover_date, Rover_time, Rover_Quality,
@@ -548,7 +560,11 @@ def Rover2_Thread():
                     Rover_N, Rover_E, Rover_D, Rover_alt, height_boom, Rover_Speed 
                     
                 ]))
-                R_2_Message.put(Rover_2_outline)
+                if parsed_data.identity == 'NAV-RELPOSNED':
+                    add_sample(Rover_time, "r2", {
+                        "outline": Rover_2_outline,
+                        "relNED": last_relNED_r2
+                    })
                 #print("rover2:",Rover_2_outline)
 
 def Rover3_Thread():
@@ -604,8 +620,6 @@ def Rover3_Thread():
 
             elif parsed_data.identity == 'NAV-RELPOSNED':
                 Rover_time = parsed_data.iTOW
-                R_3_Time.queue.clear()
-                R_3_Time.put(Rover_time)
                 Rover_accHeading = parsed_data.accHeading
                 # u-blox NAV-RELPOSNED: relPosN/E/D in cm (raw int), relPosHPN/E/D in 0.1 mm.
                 # Gesamtposition in Metern: (cm-Wert + HPN * 0.01_cm) * 0.01 = m
@@ -678,14 +692,17 @@ def Rover3_Thread():
                         delta_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
 
                 # Message für Logger
-                R_3_Message.queue.clear()
                 Rover_3_outline = ";".join(map(_fmt, [
                     rel_heading, abs_heading, R3_angular_velocity, delta_heading, mov_avg_heading,
                     Rover_date, Rover_time, Rover_Quality,
                     Rover_lon, Rover_lat, Rover_accHeading,
                     Rover_N, Rover_E, Rover_D, Rover_alt, height_boom, Rover_Speed
                 ]))
-                R_3_Message.put(Rover_3_outline)
+                if parsed_data.identity == 'NAV-RELPOSNED':
+                    add_sample(Rover_time, "r3", {
+                        "outline": Rover_3_outline,
+                        "relNED": last_relNED_r3
+                    })
                 #print("rover3:",Rover_3_outline)
 
 csv_data_buffer = deque()
@@ -701,126 +718,132 @@ def _csv_format(v):
 
 
 def csv_logger_thread_buffered():
-    """
-    Sammelt Messages aller drei Rover und der Base, synchronisiert über
-    iTOW-Zeitstempel, ergänzt Mittelachsen-Auswertung (Var. A + Var. B)
-    und schreibt eine CSV-Zeile pro Sample.
+    """Refactor C (2026-05-30): konsumiert samples_by_itow Dict.
 
-    Toleranzen (Einheit wie iTOW, ms):
-        tolerance_rover: max. erlaubte Spreizung der iTOW-Werte der 3 Rover
-        tolerance_base:  max. erlaubte Abweichung Base von Rover-Mittel
+    Iteriert pro Zyklus über sortierte iTOWs. Pro Eintrag:
+      - alle 4 Sources da → CSV-Zeile schreiben, Eintrag löschen
+      - iTOW älter als SAMPLE_MAX_AGE_MS ohne komplett → drop
+      - sonst: warten (jünger als Threshold, Daten noch unterwegs)
+
+    Ersetzt das alte 4-Queue-+-Sync-Toleranz-Pattern (38% Drops gemessen am 30.05.).
+    Architektur-Vorteil: ein iTOW-Eintrag wird gesammelt bis komplett, kein Race
+    durch ungleichmäßig gefüllte Queues mehr möglich.
     """
     global R1_lateral_offset_cm, R2_lateral_offset_cm
     global R1_longitudinal_offset_cm, R2_longitudinal_offset_cm
     global R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm
     global vehicle_axis_length_m, vehicle_heading_via_r3
 
-    print("[Logger] Thread gestartet (3 Rover + Base)")
-
-    tolerance_rover = 0.1   # max. iTOW-Spread zwischen R1/R2/R3
-    tolerance_base  = 0.5   # max. iTOW-Diff Base zu Rover-Mittel
+    print("[Logger] Thread gestartet (iTOW-Dict-Modus, Refactor C)")
 
     while not stop_event.is_set():
-        time.sleep(0.02)  # 50 Hz Logger-Poll, deckt 10 Hz Sampling sicher ab (Fix 22.05.2026)
+        time.sleep(0.02)  # 50 Hz Poll-Frequenz, deckt 10 Hz Producer locker ab
 
         try:
-            if (R_1_Time.empty() or R_2_Time.empty() or R_3_Time.empty()
-                or B_Time.empty()
-                or R_1_Message.empty() or R_2_Message.empty() or R_3_Message.empty()
-                or B_Message.empty()):
-                continue
+            # Snapshot der iTOWs unter Lock — minimiert Critical Section
+            with samples_lock:
+                if not samples_by_itow:
+                    continue
+                itows_sorted = sorted(samples_by_itow.keys())
+                newest_itow = itows_sorted[-1]
 
-            Ro_1_T = R_1_Time.get();   R_1_msg = R_1_Message.get()
-            Ro_2_T = R_2_Time.get();   R_2_msg = R_2_Message.get()
-            Ro_3_T = R_3_Time.get();   R_3_msg = R_3_Message.get()
-            Ba_T   = B_Time.get();     Bmsg    = B_Message.get()
+                # Was wir verarbeiten können: vollständige Samples + alte unvollständige
+                process_complete = []  # iTOWs die wir gleich schreiben
+                process_drop = []      # iTOWs die wir verwerfen
+                for itow in itows_sorted:
+                    sample = samples_by_itow[itow]
+                    if len(sample) == 4 and all(k in sample for k in ("r1", "r2", "r3", "base")):
+                        process_complete.append((itow, sample))
+                        del samples_by_itow[itow]
+                    elif newest_itow - itow > SAMPLE_MAX_AGE_MS:
+                        process_drop.append(itow)
+                        del samples_by_itow[itow]
+                    else:
+                        # Sample ist jung und unvollständig — warte auf restliche Daten
+                        break
 
-            # Bedingung 1: alle drei Rover-Zeiten eng beisammen
-            rover_spread = max(Ro_1_T, Ro_2_T, Ro_3_T) - min(Ro_1_T, Ro_2_T, Ro_3_T)
-            if rover_spread > tolerance_rover:
-                continue
+            # Außerhalb des Locks: CSV-Zeilen schreiben (kann lang dauern bei _fmt etc.)
+            for itow, sample in process_complete:
+                R_1_msg = sample["r1"]["outline"]
+                R_2_msg = sample["r2"]["outline"]
+                R_3_msg = sample["r3"]["outline"]
+                B_msg   = sample["base"]["outline"]
+                r1_relNED = sample["r1"]["relNED"]
+                r2_relNED = sample["r2"]["relNED"]
+                r3_relNED = sample["r3"]["relNED"]
 
-            mean_rover_time = (Ro_1_T + Ro_2_T + Ro_3_T) / 3.0
+                # ----- Mittelachsen-Auswertung -----
+                a_len, aN_hat, aE_hat, axis_heading = vehicle_axis(r3_relNED)
 
-            # Bedingung 2: Base nah am Rover-Mittel
-            if abs(Ba_T - mean_rover_time) > tolerance_base:
-                continue
+                # Variante A: Projektion von R1 und R2 auf die Längsachse
+                if aN_hat is not None:
+                    lat_r1_m, lon_r1_m = lateral_offset_a(r1_relNED, aN_hat, aE_hat)
+                    lat_r2_m, lon_r2_m = lateral_offset_a(r2_relNED, aN_hat, aE_hat)
+                    lat_r1_cm = lat_r1_m * 100 if lat_r1_m is not None else None
+                    lat_r2_cm = lat_r2_m * 100 if lat_r2_m is not None else None
+                    lon_r1_cm = lon_r1_m * 100 if lon_r1_m is not None else None
+                    lon_r2_cm = lon_r2_m * 100 if lon_r2_m is not None else None
+                else:
+                    lat_r1_cm = lat_r2_cm = lon_r1_cm = lon_r2_cm = None
 
-            # ----- Mittelachsen-Auswertung -----
-            # Längsachse Base->R3
-            a_len, aN_hat, aE_hat, axis_heading = vehicle_axis(last_relNED_r3)
+                # Variante B: direkte Differenzvektoren R3->R1, R3->R2
+                dN_r1, dE_r1, dist_r1_m, head_r1_deg = diff_vector_b(r1_relNED, r3_relNED)
+                dN_r2, dE_r2, dist_r2_m, head_r2_deg = diff_vector_b(r2_relNED, r3_relNED)
 
-            # Variante A: Projektion von R1 und R2 auf die Längsachse
-            if aN_hat is not None:
-                lat_r1_m, lon_r1_m = lateral_offset_a(last_relNED_r1, aN_hat, aE_hat)
-                lat_r2_m, lon_r2_m = lateral_offset_a(last_relNED_r2, aN_hat, aE_hat)
-                lat_r1_cm = lat_r1_m * 100 if lat_r1_m is not None else None
-                lat_r2_cm = lat_r2_m * 100 if lat_r2_m is not None else None
-                lon_r1_cm = lon_r1_m * 100 if lon_r1_m is not None else None
-                lon_r2_cm = lon_r2_m * 100 if lon_r2_m is not None else None
-            else:
-                lat_r1_cm = lat_r2_cm = lon_r1_cm = lon_r2_cm = None
+                if lat_r1_cm is not None and lat_r2_cm is not None:
+                    gestaenge_total_cm = lat_r1_cm - lat_r2_cm
+                else:
+                    gestaenge_total_cm = None
 
-            # Variante B: direkte Differenzvektoren R3->R1, R3->R2
-            dN_r1, dE_r1, dist_r1_m, head_r1_deg = diff_vector_b(last_relNED_r1, last_relNED_r3)
-            dN_r2, dE_r2, dist_r2_m, head_r2_deg = diff_vector_b(last_relNED_r2, last_relNED_r3)
+                # Globale Werte für den Live-Server
+                R1_lateral_offset_cm = lat_r1_cm if lat_r1_cm is not None else 0
+                R2_lateral_offset_cm = lat_r2_cm if lat_r2_cm is not None else 0
+                R1_longitudinal_offset_cm = lon_r1_cm if lon_r1_cm is not None else 0
+                R2_longitudinal_offset_cm = lon_r2_cm if lon_r2_cm is not None else 0
 
-            # Differenz R1-R2 in Querauslenkung (≈ Gestängebewegungs-Indikator)
-            if lat_r1_cm is not None and lat_r2_cm is not None:
-                gestaenge_total_cm = lat_r1_cm - lat_r2_cm
-            else:
-                gestaenge_total_cm = None
+                # Moving-Average-Filter
+                if lon_r1_cm is not None:
+                    _r1_long_filter_buf.append(lon_r1_cm)
+                    R1_longitudinal_filtered_cm = sum(_r1_long_filter_buf) / len(_r1_long_filter_buf)
+                if lon_r2_cm is not None:
+                    _r2_long_filter_buf.append(lon_r2_cm)
+                    R2_longitudinal_filtered_cm = sum(_r2_long_filter_buf) / len(_r2_long_filter_buf)
 
-            # Globale Werte für den Live-Server
-            R1_lateral_offset_cm = lat_r1_cm if lat_r1_cm is not None else 0
-            R2_lateral_offset_cm = lat_r2_cm if lat_r2_cm is not None else 0
-            R1_longitudinal_offset_cm = lon_r1_cm if lon_r1_cm is not None else 0
-            R2_longitudinal_offset_cm = lon_r2_cm if lon_r2_cm is not None else 0
+                vehicle_axis_length_m = a_len if a_len is not None else 0
+                vehicle_heading_via_r3 = axis_heading if axis_heading is not None else 0
 
-            # Moving-Average-Filter (Fensterbreite FILTER_WINDOW_S aus config.json)
-            if lon_r1_cm is not None:
-                _r1_long_filter_buf.append(lon_r1_cm)
-                R1_longitudinal_filtered_cm = sum(_r1_long_filter_buf) / len(_r1_long_filter_buf)
-            if lon_r2_cm is not None:
-                _r2_long_filter_buf.append(lon_r2_cm)
-                R2_longitudinal_filtered_cm = sum(_r2_long_filter_buf) / len(_r2_long_filter_buf)
+                sym_yaw_raw  = (lon_r2_cm - lon_r1_cm) / 2.0 if (lon_r1_cm is not None and lon_r2_cm is not None) else None
+                asym_yaw_raw = (lon_r1_cm + lon_r2_cm) / 2.0 if (lon_r1_cm is not None and lon_r2_cm is not None) else None
+                sym_yaw_filt  = (R2_longitudinal_filtered_cm - R1_longitudinal_filtered_cm) / 2.0
+                asym_yaw_filt = (R1_longitudinal_filtered_cm + R2_longitudinal_filtered_cm) / 2.0
 
-            vehicle_axis_length_m = a_len if a_len is not None else 0
-            vehicle_heading_via_r3 = axis_heading if axis_heading is not None else 0
+                lon_r1_tared = (lon_r1_cm - TARE_R1_LONG_CM) if lon_r1_cm is not None else None
+                lon_r2_tared = (lon_r2_cm - TARE_R2_LONG_CM) if lon_r2_cm is not None else None
 
-            # ----- CSV-Zeile zusammenbauen -----
-            # Symmetric / Asymmetric Yaw (roh + gefiltert) — nach Falks GeoGebra-Konvention
-            sym_yaw_raw      = (lon_r2_cm - lon_r1_cm) / 2.0 if (lon_r1_cm is not None and lon_r2_cm is not None) else None
-            asym_yaw_raw     = (lon_r1_cm + lon_r2_cm) / 2.0 if (lon_r1_cm is not None and lon_r2_cm is not None) else None
-            sym_yaw_filt     = (R2_longitudinal_filtered_cm - R1_longitudinal_filtered_cm) / 2.0
-            asym_yaw_filt    = (R1_longitudinal_filtered_cm + R2_longitudinal_filtered_cm) / 2.0
+                calc_outline = ";".join(_csv_format(v) for v in [
+                    lat_r1_cm, lat_r2_cm, lon_r1_cm, lon_r2_cm,
+                    a_len, axis_heading,
+                    dist_r1_m * 100 if dist_r1_m is not None else None, head_r1_deg,
+                    dist_r2_m * 100 if dist_r2_m is not None else None, head_r2_deg,
+                    gestaenge_total_cm,
+                    R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
+                    sym_yaw_raw, sym_yaw_filt,
+                    asym_yaw_raw, asym_yaw_filt,
+                    lon_r1_tared, lon_r2_tared,
+                    TARE_R1_LONG_CM, TARE_R2_LONG_CM,
+                    TARE_SET_AT if TARE_SET_AT else "",
+                ])
 
-            # Tare-bereinigte longitudinal-Werte (nur longitudinal — lateral ist Hebelarm-Geometrie)
-            lon_r1_tared = (lon_r1_cm - TARE_R1_LONG_CM) if lon_r1_cm is not None else None
-            lon_r2_tared = (lon_r2_cm - TARE_R2_LONG_CM) if lon_r2_cm is not None else None
+                line = (f"{R_1_msg.replace('.', ',')};"
+                        f"{R_2_msg.replace('.', ',')};"
+                        f"{R_3_msg.replace('.', ',')};"
+                        f"{B_msg.replace('.', ',')};"
+                        f"{calc_outline.replace('.', ',')}")
+                csv_data_buffer.append(line.split(";"))
 
-            calc_outline = ";".join(_csv_format(v) for v in [
-                lat_r1_cm, lat_r2_cm, lon_r1_cm, lon_r2_cm,
-                a_len, axis_heading,
-                dist_r1_m * 100 if dist_r1_m is not None else None, head_r1_deg,
-                dist_r2_m * 100 if dist_r2_m is not None else None, head_r2_deg,
-                gestaenge_total_cm,
-                # Gefilterte Spalten (Moving-Average longitudinal R1/R2 + abgeleitete Yaw-Komponenten)
-                R1_longitudinal_filtered_cm, R2_longitudinal_filtered_cm,
-                sym_yaw_raw, sym_yaw_filt,
-                asym_yaw_raw, asym_yaw_filt,
-                # Tare-bereinigte longitudinal + die aktiven Offset-Werte + Timestamp
-                lon_r1_tared, lon_r2_tared,
-                TARE_R1_LONG_CM, TARE_R2_LONG_CM,
-                TARE_SET_AT if TARE_SET_AT else "",
-            ])
-
-            line = (f"{R_1_msg.replace('.', ',')};"
-                    f"{R_2_msg.replace('.', ',')};"
-                    f"{R_3_msg.replace('.', ',')};"
-                    f"{Bmsg.replace('.', ',')};"
-                    f"{calc_outline.replace('.', ',')}")
-            csv_data_buffer.append(line.split(";"))
+            # Drop-Diagnostik nur loggen wenn was passiert (zur Bench-Test-Analyse)
+            if process_drop:
+                print(f"[Logger] dropped {len(process_drop)} unvollständige iTOW(s) > {SAMPLE_MAX_AGE_MS}ms alt")
 
         except Exception as e:
             print("[Logger Thread] Fehler:", e)
@@ -928,11 +951,10 @@ def export_to_csv():
         return None
     
 def start_measurement():
-    global streamBase
-    global B_Message, B_Time, Base_Speed
-    global streamRover1, R_1_Message, R_1_Time, vibration_history_rover1, heading_buffer_1, heading_buffer_linear_1, quality_rover1, R1_angular_velocity
-    global streamRover2, R_2_Message, R_2_Time, vibration_history_rover2, heading_buffer_2, heading_buffer_linear_2, quality_rover2, R2_angular_velocity
-    global streamRover3, R_3_Message, R_3_Time, vibration_history_rover3, heading_buffer_3, heading_buffer_linear_3, quality_rover3, R3_angular_velocity
+    global streamBase, Base_Speed
+    global streamRover1, vibration_history_rover1, heading_buffer_1, heading_buffer_linear_1, quality_rover1, R1_angular_velocity
+    global streamRover2, vibration_history_rover2, heading_buffer_2, heading_buffer_linear_2, quality_rover2, R2_angular_velocity
+    global streamRover3, vibration_history_rover3, heading_buffer_3, heading_buffer_linear_3, quality_rover3, R3_angular_velocity
     global threads, stop_event
     global measurement_running
     global lenght_mov_avg
@@ -940,6 +962,9 @@ def start_measurement():
     threads = []
     stop_event = threading.Event()
     csv_data_buffer.clear()
+    # Refactor C: samples_by_itow zwischen Messungen sauber resetten
+    with samples_lock:
+        samples_by_itow.clear()
 
     print(">>> start_measurement() wurde aufgerufen")
 

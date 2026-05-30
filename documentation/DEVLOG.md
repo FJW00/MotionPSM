@@ -4,6 +4,93 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-30 — Logger-Refactor C: iTOW-Dict statt 4 unsync'd Queues
+
+**Befund:** Auch nach dem USB-only-Configs-Fix (54d1dd4) zeigen die CSV-iTOW-Differenzen nur 62.4% bei 100 ms, 25.1% bei 200 ms, der Rest auch grösser. Effektive Rate: 5.29 Hz statt 10 Hz. Die Module liefern jetzt definitiv 10 Hz (per pyubx2-Hz-Test verifiziert), aber der Logger dropt 38% der Samples.
+
+**Ursache (in der alten Architektur):**
+
+- 4 Producer-Threads (Base, Rover1, Rover2, Rover3) schrieben in 8 separate `queue.Queue`-Instanzen mit `queue.clear() + put()` Pattern (jede Queue maximal 1 Sample tief).
+- 1 Consumer-Thread (`csv_logger_thread_buffered`) pollte mit `time.sleep(0.02)`, holte aus jeder Queue mit `.get()`, und prüfte iTOW-Sync per Toleranz (100 ms Rover, 500 ms Base).
+- Bei Phase-Versatz der Module: Beispiel — Rover 1 schreibt bei iTOW=200, Rover 2 hat noch iTOW=100 weil USB-Latency 5 ms später. Logger zieht: R1=200, R2=100, R3=200, B=200. Spread 100 ms → an Toleranzgrenze, oft `continue`. Sample weg, Lücke im CSV.
+- Plus: die Queues haben kein Verständnis von "wer hat geliefert" — sie liefern einfach den letzten Wert. Wenn die Producer leicht unterschiedlich oft `clear()+put()` machen, kann der Consumer „alte" R1-Werte mit „neuen" R3-Werten mischen. Sync-Logik fängt das nur teilweise ab.
+
+**Lösung (Refactor C):**
+
+Zentrale Sample-Sammlung, gruppiert nach iTOW:
+
+```python
+samples_lock = threading.Lock()
+samples_by_itow = {}  # iTOW (int ms) → {"r1": {...}, "r2": {...}, "r3": {...}, "base": {...}}
+SAMPLE_MAX_AGE_MS = 300
+
+def add_sample(itow, source, payload):
+    with samples_lock:
+        bucket = samples_by_itow.setdefault(int(itow), {})
+        bucket[source] = payload
+```
+
+**Producer-Threads:**
+
+Jeder Thread ruft beim NAV-RELPOSNED-Empfang (Rover) bzw. NAV-PVT-Empfang (Base) `add_sample(itow, source, {"outline": ..., "relNED": (N,E,D)})` auf. Outline wird aus dem aktuellen Thread-State (akkumulierte NMEA-Daten) gebaut. Die alten `queue.clear()+put()` Pattern sind komplett raus.
+
+**Consumer (csv_logger_thread_buffered v2):**
+
+```python
+while not stop_event.is_set():
+    time.sleep(0.02)
+    with samples_lock:
+        itows_sorted = sorted(samples_by_itow.keys())
+        newest = itows_sorted[-1] if itows_sorted else 0
+        complete_samples = []
+        for itow in itows_sorted:
+            sample = samples_by_itow[itow]
+            if len(sample) == 4 and all(k in sample for k in ("r1","r2","r3","base")):
+                complete_samples.append((itow, sample))
+                del samples_by_itow[itow]
+            elif newest - itow > SAMPLE_MAX_AGE_MS:
+                del samples_by_itow[itow]  # zu alt, drop
+            else:
+                break  # noch jung, warten
+    # CSV-Schreiben außerhalb des Locks (vermeidet Lock-Contention bei langen Operationen)
+    for itow, sample in complete_samples:
+        ... build CSV line from sample[r1/r2/r3/base].outline + relNED ...
+```
+
+**Erwarteter Effekt:**
+
+- 100ms-Lücken-Quote sollte > 95% steigen (von 62.4%)
+- 200ms-Drops verschwinden weil keine Race-Condition mehr möglich ist (Samples werden NACH iTOW gruppiert, nicht nach Queue-Eintrag-Reihenfolge)
+- Spikes > 500 ms bleiben evtl. drin — die kommen vermutlich von echten USB-Stalls oder Pi-Scheduler-Hängern, das löst dieser Refactor nicht
+
+**Architektur-Vorteile zusätzlich:**
+
+- Lock nur kurz beim Pull aus Dict, CSV-Bau außerhalb → kein Lock-Contention mit Producern
+- Memory-bounded durch SAMPLE_MAX_AGE_MS Cleanup (Dict wächst nicht unbegrenzt)
+- Easy Debug: `samples_by_itow` ist inspizierbar, vs alte Queues waren opak
+
+**Files geändert:**
+
+- `system/pi/gps_measurement.py`:
+  - Globale Queue-Decls (B_Time, B_Message, R_X_Time/Message) → samples_by_itow + samples_lock
+  - `add_sample()` Helper hinzugefügt
+  - BaseThread, Rover1/2/3_Thread: queue.clear+put → add_sample bei NAV-PVT/RELPOSNED
+  - csv_logger_thread_buffered komplett neu (Dict-Konsumption)
+  - start_measurement(): Queue-Globals aus globals raus, samples_by_itow.clear() bei Start
+
+**Test offen:**
+
+- Bench-Test am Pi: `git checkout refactor/logger-itow-dict`, `git pull`, Server starten, 30s messen, CSV-iTOW-Verteilung analysieren. Erwartung: > 95% bei 100 ms.
+- Falls bestätigt → merge nach main
+- Wenn problematisch (z.B. Memory-Leak oder Lock-Contention): zurück auf main, weiter analysieren
+
+**Risiko:**
+
+- Mittel. Architektur-Umbau betrifft kritischen Datenpfad. Aber: durch Branch isoliert, jederzeit zurückrollbar mit `git checkout main`.
+- Edge Case: wenn ein Modul länger als 300 ms ausfällt, droppen wir frühe Samples. Bei DLG-Anwendungsfall (RTK-Fix-Verlust) ist das aber gewünscht — kein Müll-Sample mit Mixed-Time-Daten.
+
+---
+
 ## 2026-05-30 — 5-Hz-Problem auf USB gelöst: NMEA-Multicast war die Ursache
 
 **Befund:** Trotz CFG-RATE-MEAS = 100 ms (= 10 Hz) auf allen Modulen lieferte der CSV-Logger nur 5 Hz effektive Sample-Rate (Lücken bei 200 ms statt 100 ms). Der Sleep-Fix vom 22.05. (time.sleep 0.1 -> 0.02) hatte keinen Effekt — er war notwendig aber nicht ausreichend.
