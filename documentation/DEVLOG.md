@@ -4,6 +4,28 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-31 — SAMPLE_MAX_AGE_MS 300 → 500 ms
+
+**Hintergrund:** Bench-Test 31.05. Hof mit Refactor C zeigte saubere iTOW-Sync
+(alle 4 Module pro CSV-Zeile identisch ✓), aber 39% der erwarteten Slots
+fehlten (100ms-Quote 60.8%, 200ms-Drops 34.3%). Erklärung: die Module
+liefern zwar 10 Hz im Bench-Test, aber im Real-World-Setup skipt jedes Modul
+sporadisch mal 1 Sample (USB-Latency, F9P-Bursts). Bei 4 Modulen × 90%
+Liefer-Quote = 0.9^4 ≈ 65% komplette Slots — passt zu beobachteten 60.8%.
+
+**Fix:** SAMPLE_MAX_AGE_MS von 300 auf 500 ms erhöhen. Logger wartet
+länger auf späte Samples. Wenn nur 1 Modul 200ms verspätet liefert, wird
+der Slot trotzdem komplett.
+
+**Risiko:** sehr gering. Bei 10Hz Production = max ~5 Samples gleichzeitig
+im Dict statt 3, also ~10 KB statt 6 KB. Pi 5 mit 8 GB RAM ignoriert das.
+Lock-Contention bleibt minimal (Sort über max ~10 Keys).
+
+**Test offen:** erneuter Hof-Bench-Test nach Base-USBonly-Flash. Erwartung
+>90% bei 100 ms.
+
+---
+
 ## 2026-05-30 — Logger-Refactor C: iTOW-Dict statt 4 unsync'd Queues
 
 **Befund:** Auch nach dem USB-only-Configs-Fix (54d1dd4) zeigen die CSV-iTOW-Differenzen nur 62.4% bei 100 ms, 25.1% bei 200 ms, der Rest auch grösser. Effektive Rate: 5.29 Hz statt 10 Hz. Die Module liefern jetzt definitiv 10 Hz (per pyubx2-Hz-Test verifiziert), aber der Logger dropt 38% der Samples.

@@ -97,7 +97,7 @@ _r2_long_filter_buf = deque(maxlen=2)
 #   wenn iTOW älter als SAMPLE_MAX_AGE_MS ohne komplett → drop
 samples_lock = threading.Lock()
 samples_by_itow = {}  # int iTOW (ms) -> {"r1": {...}, "r2": {...}, "r3": {...}, "base": {...}}
-SAMPLE_MAX_AGE_MS = 300  # Drop-Threshold für unvollständige Samples
+SAMPLE_MAX_AGE_MS = 500  # Drop-Threshold für unvollständige Samples
 BaT_exists = False
 Bmsg_Exists  = False
 base_calc_heading_buffer = deque(maxlen=10)
