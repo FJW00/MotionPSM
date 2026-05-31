@@ -186,8 +186,10 @@ def BaseThread():
     B_Speed = 0
     Base_Heading = 0
 
+    # Refactor: UBXReader EINMAL instanzieren statt pro Iteration (Performance + State-Stabilität)
+    ubr = UBXReader(streamBase, validate=0)
+
     while not stop_event.is_set():
-        ubr = UBXReader(streamBase, validate=0)
         raw_data, parsed_data = ubr.read()
 
         if parsed_data and hasattr(parsed_data, 'identity'):
@@ -270,8 +272,10 @@ def Rover1_Thread():
     abs_heading = 0
     mov_avg_heading = 0
 
+    # Refactor: UBXReader EINMAL instanzieren statt pro Iteration
+    ubr = UBXReader(streamRover1, validate=0)
+
     while not stop_event.is_set():
-        ubr = UBXReader(streamRover1, validate=0)
         raw_data, parsed_data = ubr.read()
 
         if parsed_data and hasattr(parsed_data, 'identity'):
@@ -440,8 +444,10 @@ def Rover2_Thread():
     abs_heading = 0
     mov_avg_heading = 0
 
+    # Refactor: UBXReader EINMAL instanzieren statt pro Iteration
+    ubr = UBXReader(streamRover2, validate=0)
+
     while not stop_event.is_set():
-        ubr = UBXReader(streamRover2, validate=0)
         raw_data, parsed_data = ubr.read()
 
         if parsed_data and hasattr(parsed_data, 'identity'):
@@ -591,8 +597,10 @@ def Rover3_Thread():
     abs_heading = 0
     mov_avg_heading = 0
 
+    # Refactor: UBXReader EINMAL instanzieren statt pro Iteration
+    ubr = UBXReader(streamRover3, validate=0)
+
     while not stop_event.is_set():
-        ubr = UBXReader(streamRover3, validate=0)
         raw_data, parsed_data = ubr.read()
 
         if parsed_data and hasattr(parsed_data, 'identity'):

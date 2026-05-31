@@ -4,6 +4,22 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-31 — Experimentell: UBXReader EINMAL pro Thread statt pro Iteration
+
+**Hypothese:** Im bisherigen Code wird `UBXReader(stream, validate=0)` in JEDER while-Iteration neu instanziert (in BaseThread + Rover1/2/3_Thread). Auch wenn pyubx2 das stateless behandeln SOLLTE, könnte dieses Neu-Erzeugen Stream-Buffer-Reset oder andere Side-Effects haben — z.B. Verlust von partial bytes zwischen UBX-Frames, was sporadische Sample-Drops erklären könnte.
+
+**Hintergrund:** Hof-Test 31.05. (Refactor C, MAX=300, break drin) zeigte 60.8% bei 100ms — Refactor C hat das Sync sauber gemacht (alle iTOWs synchron pro CSV-Zeile), aber 40% der erwarteten Samples fehlen. Module liefern aber per pyubx2-Hz-Test sauber 10 Hz. Heißt: zwischen Modul-Output und CSV verlieren wir Samples.
+
+**Änderung:** In allen 4 Producer-Threads (BaseThread, Rover1/2/3_Thread) wurde `ubr = UBXReader(...)` aus der while-Schleife rausgezogen, EINMAL beim Thread-Start instanziert, dann nur noch `ubr.read()` in der Schleife.
+
+**Risiko:** sehr gering. Wenn pyubx2 keine Initialisierungs-State pflegt, ist's ein No-Op. Wenn doch, sollte es positiv wirken (kein State-Verlust mehr).
+
+**Test offen:** Hof-Bench-Test auf separatem Branch `experiment/ubxreader-cleanup`. Erwartung: 100ms-Quote sollte steigen wenn die Hypothese stimmt. Wenn nicht (= 60.8% bleibt), war's pyubx2 schon richtig handhabend und der Bottleneck liegt woanders.
+
+**Rollback:** falls Probleme, `git checkout refactor/logger-itow-dict` — keine destruktiven Code-Änderungen, nur Refactor.
+
+---
+
 ## 2026-05-31 — Rollback: SAMPLE_MAX_AGE_MS 500 → 300
 
 **Befund vom Hof-Test 14:00:** Mit MAX=500 lieferte die CSV durchgängig 200ms-Steps (= 5 Hz effektiv), während die Module per pyubx2-Hz-Test sauber 10 Hz produzieren. Vormittag-Stand (MAX=300) hatte 60.8% bei 100ms erreicht — deutlich besser.
