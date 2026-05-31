@@ -4,6 +4,16 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-05-31 — Rollback: SAMPLE_MAX_AGE_MS 500 → 300
+
+**Befund vom Hof-Test 14:00:** Mit MAX=500 lieferte die CSV durchgängig 200ms-Steps (= 5 Hz effektiv), während die Module per pyubx2-Hz-Test sauber 10 Hz produzieren. Vormittag-Stand (MAX=300) hatte 60.8% bei 100ms erreicht — deutlich besser.
+
+**Rollback:** SAMPLE_MAX_AGE_MS zurück auf 300. Architektur (break-Statement) bleibt unverändert. Stand entspricht commit a0fb3f3 (vor dem 500ms-Experiment).
+
+**Test offen:** erneuter Hof-Bench-Test sollte ~60% bei 100ms reproduzieren. Ist das die Baseline, von der wir auf separatem Branch `experiment/ubxreader-cleanup` weiter optimieren.
+
+---
+
 ## 2026-05-31 — SAMPLE_MAX_AGE_MS 300 → 500 ms
 
 **Hintergrund:** Bench-Test 31.05. Hof mit Refactor C zeigte saubere iTOW-Sync
