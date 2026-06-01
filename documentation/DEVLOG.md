@@ -4,6 +4,256 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-01 abends — DLG-Lock: /tmp-Cleanup + USB-Reset-Skript
+
+**Befund Akkumulations-Bug (klar bestätigt):**
+- Direkt nach Pi-Reboot + F9P-Reboot: iTOW-Mittel **140-155 ms** (≈ 6.5-7 Hz)
+- 2.-N. Messung (nur Server-Restart): iTOW-Mittel **200-247 ms** (≈ 4-5 Hz)
+- Reproduziert mit beiden Base-Configs (Original und USBonly_v2). Modul ist NICHT die Ursache.
+- Frontend-Polling-Reduktion (1000ms) brachte _nichts_ — paradoxerweise zeigte 100ms-Polling die beste Quote.
+  Heißt: GIL-Polling allein erklärt den Bug nicht.
+
+**Hypothese:** Pi-USB-Subsystem oder Python-State akkumuliert zwischen Server-Restarts. Nur Pi-Reboot setzt vollständig zurück. Saubere Lösung wäre Subprocess-Architektur (gps_measurement als eigener Python-Prozess, getötet beim Stop) — aber zu viel Refactor 13 Tage vor DLG.
+
+**Zwei pragmatische Quick-Hacks für DLG:**
+
+### 1. `/tmp`-Cleanup nach erfolgreichem CSV-Download
+`server.py` `/export`-Endpoint: nach `send_file` über `after_this_request`-Hook alle `/tmp/Records_F9P_*.csv` älter als 30s löschen (gerade gesendete Datei sicher ausgenommen). Nur wenn Response-Status 200/206.
+
+**Warum:** Pi's `/tmp` ist tmpfs (RAM). Bei vielen Test-Runs ohne Cleanup wächst es. Reduziert RAM-Druck.
+
+**Sicherheit:** Cleanup läuft erst NACH erfolgreichem Download — kein Datenverlust möglich.
+
+### 2. `tools/usb_reset_f9p.sh` — F9P USB-Reset ohne Pi-Reboot
+Bindet die 4 F9P-USB-Devices über `/sys/bus/usb/drivers/usb/{unbind,bind}` ab und wieder an. Setzt USB-Subsystem-State zurück ohne Reboot (~5s Dauer statt ~60s).
+
+**Verwendung:**
+```
+# Server vorher stoppen:
+sudo systemctl stop motionpsm    # falls Autostart
+# oder Strg+C im Server-Terminal
+
+sudo bash tools/usb_reset_f9p.sh
+
+# danach Server wieder starten
+```
+
+**Test-Plan:** morgen am Pi testen — wenn nach Reset wieder ~140ms-Mittelwert → Workaround validiert für DLG.
+
+### Was NICHT gefixt ist
+- Eigentliche Akkumulations-Ursache (Subprocess-Refactor post-DLG)
+- 100ms-Quote im Frontend-Live-View (Live-View ist nicht der CSV-Logger; Visualisierung ist OK)
+
+**Risiko-Abwägung:** kein Code-Risiko (nur additive Maßnahmen). Cleanup im Export ist defensiv (after_this_request-Hook fängt Exceptions, dropt sie still). USB-Reset-Skript wird manuell aufgerufen.
+
+---
+
+## 2026-06-01 — Frontend-Polling 200ms → 1000ms (DLG-Lock-Kandidat)
+
+**Befund:** Hof-Test 21:00 mit lean-producer + stop-cleanup + break→continue zeigte trotz allem **200ms-Pattern in CSV mit 42× "3 Rover gleichzeitig" Drop-Pattern**. Im Log-Output: Browser pollt `GET /data` alle 200ms = 5×/s.
+
+Flask läuft im gleichen Python-Prozess wie Producer-Threads. Pro `/data`-Response: ~30-50ms CPU (math, jsonify, _g für 25 Variablen). Python's GIL → Producer-Threads sind während Flask-Response BLOCKIERT → verpassen NAV-RELPOSNED-Verarbeitung → unvollständige iTOW-Slots → CSV jede 200ms statt 100ms.
+
+**Fix:** Frontend `setInterval(fetchData, 200)` → `setInterval(fetchData, 1000)`. 1 UI-Update pro Sekunde statt 5. Tablet zeigt Boom-Schwingung weiterhin flüssig (Schwingung ist 0.5-2 Hz, Update-Rate 1 Hz reicht für visuelle Demo).
+
+**Erwartung:** Producer-Threads bekommen GIL zurück → 100ms-Quote sollte deutlich steigen.
+
+**Wenn DLG-tauglich:** lean-producer → main merge. DLG-Lock.
+
+---
+
+## 2026-06-01 — Logger: break → continue (letzter Code-Test vor DLG-Lock)
+
+**Hypothese:** Aktuell stoppt der Logger beim ersten jungen unvollständigen iTOW. Komplette spätere iTOWs müssen auf nächsten Cycle warten (max 20ms). Bei kontinuierlichem Stream mit gelegentlichen unvollständigen iTOWs könnte das die Output-Rate begrenzen.
+
+**Change:** `break` → `continue`. Logger iteriert nun durch ALLE iTOWs in samples_by_itow:
+- Komplette → schreiben + del
+- Zu alte (>SAMPLE_MAX_AGE_MS) ohne komplett → drop + del
+- Junge unvollständige → continue (im Dict lassen für nächsten Cycle)
+
+**Erwartung:** wenn ein junger iTOW (z.B. 50ms alt) inkomplett ist, aber der nächste iTOW (10ms alt) komplett — wird der jüngere KOMPLETTE jetzt direkt geschrieben. Vorher blockierte der ältere unvollständige.
+
+**Trade-off:** CSV-Zeilen-Reihenfolge nicht mehr strikt aufsteigend nach iTOW (kann aber via Spalte sortiert werden — keine echte Einschränkung).
+
+**Risiko:** sehr gering. Wenn keine Verbesserung → Bottleneck liegt woanders (vermutlich Producer-Thread-Latency / Multi-Port-USB).
+
+**Test offen:** Bench-Test refactor/lean-producer. Wenn deutlich besser → DLG-Version. Wenn nicht → akzeptieren dass 5-7 Hz mit aktuellem Stand der finale ist.
+
+---
+
+## 2026-06-01 — Stop-Cleanup-Fix: Thread + Stream Lifecycle sauber
+
+**Befund:** Falk hat bemerkt — frischer Server-Start liefert deutlich bessere CSV-Daten als nach mehreren Start/Stop-Zyklen. Drop-Log bestätigt:
+- `logger fresh after start`: 32 Drop-Lines, fast keine "3 Rover gleichzeitig"
+- `logger ubx` (nach vorherigem Run): 128 Drop-Lines, 82× "3 Rover gleichzeitig"
+
+**Ursache:** Im alten `stop_measurement()`:
+- `t.join(timeout=2)` aber Producer-Threads sind in `ubr.read()` mit Serial-Timeout 3s blocking → Join gibt nach 2s auf
+- Daemon-Threads laufen im Hintergrund weiter
+- Beim nächsten `start_measurement()`: neue Threads + alte = mehr Threads → mehr GIL-Druck → mehr Drops
+- `samples_by_itow.clear()` passierte nur in start, nicht in stop → Race möglich
+
+**Fix:**
+1. Streams ZUERST schließen → Producer-`ubr.read()` kriegt SerialException → Thread durchläuft Catch-Block → kann stop_event prüfen → endet
+2. Join-Timeout auf 4s erhöht
+3. `samples_by_itow.clear()` + `csv_data_buffer.clear()` in stop_measurement
+4. start_measurement: defensiv prüfen ob alte Messung noch läuft + alte Threads noch leben
+
+**Test offen:** Mehrere start/stop-Zyklen am Pi — sollte konsistent gleich gute Daten liefern wie frischer Start.
+
+---
+
+## 2026-06-01 — Lean Producer Threads: schwere Berechnungen raus, GIL entlastet
+
+**Befund 31.05. (Hof-Tests, alle Browser-Tabs zu):**
+Drop-Debug-Output zeigt klares Pattern: in 80.5% der Drops fehlen ALLE 3 ROVER gleichzeitig, Base ist da. 9.8% alle 4 fehlen, 7.3% nur Base. Browser-Polling-Hypothese damit ausgeschlossen.
+
+**Diagnose:** Python GIL erlaubt nur 1 Thread Bytecode auf einmal. Die 3 Rover-Threads machen pro NAV-RELPOSNED:
+- `np.linalg.lstsq` für angular_velocity (Linear Regression über 20 Punkte)
+- Moving-Average mit sin/cos-Schleife über buffer
+- init_heading + abs_heading Logik
+- height_boom (Base_alt - Rover_alt)
+
+Bei 30 NAV-RELPOSNED/s (3 Rover × 10 Hz) kämpfen die Threads um den GIL → werden gleichzeitig blockiert → Samples gehen verloren.
+
+**Falks Entscheidung (01.06.):** Viele dieser Berechnungen sind Legacy aus der BA-Zeit und nicht mehr DLG-relevant. Behalten werden pro Rover nur: Heading, delta_Heading, Date, Time, Quality, Lon, Lat, accHeading, N, E, D, alt, Speed. Variante A/B + Filter + Tare bleiben im Logger unverändert (nutzen nur N/E/D).
+
+**Änderungen:**
+
+- BaseThread: `geodesic()` + `Point()` + sin/cos-Heading-Mittelwert raus. Base_Heading bleibt 0 (kommt aus Vektor Base→R3 im Logger).
+- Rover1/2/3_Thread: `np.linalg.lstsq` (angular_velocity), `mov_avg_heading` mit sin/cos, `init_heading`/`abs_heading`, `current_vibration_*`, `height_boom` aus Base_alt-Diff — alle RAUS.
+- Behalten in jedem Rover: `rel_heading` (direkt aus NAV-RELPOSNED), `delta_heading` (einfache Differenz über letzte 2 Werte).
+- CSV-Schema unverändert: alle ehemaligen Berechnungs-Spalten bleiben im Header, Werte sind 0 statt berechnet. Rückwärtskompatibel für Excel-Auswertungen.
+
+**Erwartung:** Producer-Threads sind ca. 5-10× weniger CPU-intensiv pro Message. GIL-Last drastisch reduziert. 100ms-Quote sollte deutlich steigen.
+
+**Nachtrag 01.06.:** `height_boom` doch behalten — aus `-Rover_D * 100` (cm, positiv wenn Rover über Base). Eine Zeile pro Rover-Thread, keine Last-Relevanz.
+
+**Test offen:** Hof-Bench-Test auf `refactor/lean-producer`. Drop-Debug-Output zeigt ob "alle 3 Rover gleichzeitig fehlen"-Pattern verschwindet.
+
+**Risiko:** sehr gering. Wenn keine Verbesserung, einfach zurück auf refactor/logger-itow-dict. Geometrie/Mess-Pipeline (Var A/B, Tare) unverändert.
+
+---
+
+## 2026-05-31 — Rollback: SAMPLE_MAX_AGE_MS 500 → 300
+
+**Befund vom Hof-Test 14:00:** Mit MAX=500 lieferte die CSV durchgängig 200ms-Steps (= 5 Hz effektiv), während die Module per pyubx2-Hz-Test sauber 10 Hz produzieren. Vormittag-Stand (MAX=300) hatte 60.8% bei 100ms erreicht — deutlich besser.
+
+**Rollback:** SAMPLE_MAX_AGE_MS zurück auf 300. Architektur (break-Statement) bleibt unverändert. Stand entspricht commit a0fb3f3 (vor dem 500ms-Experiment).
+
+**Test offen:** erneuter Hof-Bench-Test sollte ~60% bei 100ms reproduzieren. Ist das die Baseline, von der wir auf separatem Branch `experiment/ubxreader-cleanup` weiter optimieren.
+
+---
+
+## 2026-05-31 — SAMPLE_MAX_AGE_MS 300 → 500 ms
+
+**Hintergrund:** Bench-Test 31.05. Hof mit Refactor C zeigte saubere iTOW-Sync
+(alle 4 Module pro CSV-Zeile identisch ✓), aber 39% der erwarteten Slots
+fehlten (100ms-Quote 60.8%, 200ms-Drops 34.3%). Erklärung: die Module
+liefern zwar 10 Hz im Bench-Test, aber im Real-World-Setup skipt jedes Modul
+sporadisch mal 1 Sample (USB-Latency, F9P-Bursts). Bei 4 Modulen × 90%
+Liefer-Quote = 0.9^4 ≈ 65% komplette Slots — passt zu beobachteten 60.8%.
+
+**Fix:** SAMPLE_MAX_AGE_MS von 300 auf 500 ms erhöhen. Logger wartet
+länger auf späte Samples. Wenn nur 1 Modul 200ms verspätet liefert, wird
+der Slot trotzdem komplett.
+
+**Risiko:** sehr gering. Bei 10Hz Production = max ~5 Samples gleichzeitig
+im Dict statt 3, also ~10 KB statt 6 KB. Pi 5 mit 8 GB RAM ignoriert das.
+Lock-Contention bleibt minimal (Sort über max ~10 Keys).
+
+**Test offen:** erneuter Hof-Bench-Test nach Base-USBonly-Flash. Erwartung
+>90% bei 100 ms.
+
+---
+
+## 2026-05-30 — Logger-Refactor C: iTOW-Dict statt 4 unsync'd Queues
+
+**Befund:** Auch nach dem USB-only-Configs-Fix (54d1dd4) zeigen die CSV-iTOW-Differenzen nur 62.4% bei 100 ms, 25.1% bei 200 ms, der Rest auch grösser. Effektive Rate: 5.29 Hz statt 10 Hz. Die Module liefern jetzt definitiv 10 Hz (per pyubx2-Hz-Test verifiziert), aber der Logger dropt 38% der Samples.
+
+**Ursache (in der alten Architektur):**
+
+- 4 Producer-Threads (Base, Rover1, Rover2, Rover3) schrieben in 8 separate `queue.Queue`-Instanzen mit `queue.clear() + put()` Pattern (jede Queue maximal 1 Sample tief).
+- 1 Consumer-Thread (`csv_logger_thread_buffered`) pollte mit `time.sleep(0.02)`, holte aus jeder Queue mit `.get()`, und prüfte iTOW-Sync per Toleranz (100 ms Rover, 500 ms Base).
+- Bei Phase-Versatz der Module: Beispiel — Rover 1 schreibt bei iTOW=200, Rover 2 hat noch iTOW=100 weil USB-Latency 5 ms später. Logger zieht: R1=200, R2=100, R3=200, B=200. Spread 100 ms → an Toleranzgrenze, oft `continue`. Sample weg, Lücke im CSV.
+- Plus: die Queues haben kein Verständnis von "wer hat geliefert" — sie liefern einfach den letzten Wert. Wenn die Producer leicht unterschiedlich oft `clear()+put()` machen, kann der Consumer „alte" R1-Werte mit „neuen" R3-Werten mischen. Sync-Logik fängt das nur teilweise ab.
+
+**Lösung (Refactor C):**
+
+Zentrale Sample-Sammlung, gruppiert nach iTOW:
+
+```python
+samples_lock = threading.Lock()
+samples_by_itow = {}  # iTOW (int ms) → {"r1": {...}, "r2": {...}, "r3": {...}, "base": {...}}
+SAMPLE_MAX_AGE_MS = 300
+
+def add_sample(itow, source, payload):
+    with samples_lock:
+        bucket = samples_by_itow.setdefault(int(itow), {})
+        bucket[source] = payload
+```
+
+**Producer-Threads:**
+
+Jeder Thread ruft beim NAV-RELPOSNED-Empfang (Rover) bzw. NAV-PVT-Empfang (Base) `add_sample(itow, source, {"outline": ..., "relNED": (N,E,D)})` auf. Outline wird aus dem aktuellen Thread-State (akkumulierte NMEA-Daten) gebaut. Die alten `queue.clear()+put()` Pattern sind komplett raus.
+
+**Consumer (csv_logger_thread_buffered v2):**
+
+```python
+while not stop_event.is_set():
+    time.sleep(0.02)
+    with samples_lock:
+        itows_sorted = sorted(samples_by_itow.keys())
+        newest = itows_sorted[-1] if itows_sorted else 0
+        complete_samples = []
+        for itow in itows_sorted:
+            sample = samples_by_itow[itow]
+            if len(sample) == 4 and all(k in sample for k in ("r1","r2","r3","base")):
+                complete_samples.append((itow, sample))
+                del samples_by_itow[itow]
+            elif newest - itow > SAMPLE_MAX_AGE_MS:
+                del samples_by_itow[itow]  # zu alt, drop
+            else:
+                break  # noch jung, warten
+    # CSV-Schreiben außerhalb des Locks (vermeidet Lock-Contention bei langen Operationen)
+    for itow, sample in complete_samples:
+        ... build CSV line from sample[r1/r2/r3/base].outline + relNED ...
+```
+
+**Erwarteter Effekt:**
+
+- 100ms-Lücken-Quote sollte > 95% steigen (von 62.4%)
+- 200ms-Drops verschwinden weil keine Race-Condition mehr möglich ist (Samples werden NACH iTOW gruppiert, nicht nach Queue-Eintrag-Reihenfolge)
+- Spikes > 500 ms bleiben evtl. drin — die kommen vermutlich von echten USB-Stalls oder Pi-Scheduler-Hängern, das löst dieser Refactor nicht
+
+**Architektur-Vorteile zusätzlich:**
+
+- Lock nur kurz beim Pull aus Dict, CSV-Bau außerhalb → kein Lock-Contention mit Producern
+- Memory-bounded durch SAMPLE_MAX_AGE_MS Cleanup (Dict wächst nicht unbegrenzt)
+- Easy Debug: `samples_by_itow` ist inspizierbar, vs alte Queues waren opak
+
+**Files geändert:**
+
+- `system/pi/gps_measurement.py`:
+  - Globale Queue-Decls (B_Time, B_Message, R_X_Time/Message) → samples_by_itow + samples_lock
+  - `add_sample()` Helper hinzugefügt
+  - BaseThread, Rover1/2/3_Thread: queue.clear+put → add_sample bei NAV-PVT/RELPOSNED
+  - csv_logger_thread_buffered komplett neu (Dict-Konsumption)
+  - start_measurement(): Queue-Globals aus globals raus, samples_by_itow.clear() bei Start
+
+**Test offen:**
+
+- Bench-Test am Pi: `git checkout refactor/logger-itow-dict`, `git pull`, Server starten, 30s messen, CSV-iTOW-Verteilung analysieren. Erwartung: > 95% bei 100 ms.
+- Falls bestätigt → merge nach main
+- Wenn problematisch (z.B. Memory-Leak oder Lock-Contention): zurück auf main, weiter analysieren
+
+**Risiko:**
+
+- Mittel. Architektur-Umbau betrifft kritischen Datenpfad. Aber: durch Branch isoliert, jederzeit zurückrollbar mit `git checkout main`.
+- Edge Case: wenn ein Modul länger als 300 ms ausfällt, droppen wir frühe Samples. Bei DLG-Anwendungsfall (RTK-Fix-Verlust) ist das aber gewünscht — kein Müll-Sample mit Mixed-Time-Daten.
+
+---
+
 ## 2026-05-30 — 5-Hz-Problem auf USB gelöst: NMEA-Multicast war die Ursache
 
 **Befund:** Trotz CFG-RATE-MEAS = 100 ms (= 10 Hz) auf allen Modulen lieferte der CSV-Logger nur 5 Hz effektive Sample-Rate (Lücken bei 200 ms statt 100 ms). Der Sleep-Fix vom 22.05. (time.sleep 0.1 -> 0.02) hatte keinen Effekt — er war notwendig aber nicht ausreichend.

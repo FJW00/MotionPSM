@@ -1,8 +1,9 @@
-from flask import Flask, render_template_string, jsonify, redirect, url_for, send_file
+from flask import Flask, render_template_string, jsonify, redirect, url_for, send_file, after_this_request
 import time
 import gps_measurement as gps
 import threading
 import os
+import glob
 
 # static_folder='static' ist Default — Flask serviert system/pi/static/ unter /static/
 app = Flask(__name__)
@@ -683,7 +684,7 @@ HTML_PAGE = '''
           longChart.update();
         }).catch(err => console.warn('fetch error', err));
       }
-      setInterval(fetchData, 200);
+      setInterval(fetchData, 1000);
       {% endif %}
 
       function exportAndRedirect() {
@@ -842,6 +843,36 @@ def export_csv():
         return "Keine Daten vorhanden", 404
 
     filename = os.path.basename(path)
+
+    # /tmp-Cleanup NACH erfolgreichem Download:
+    # Pi's /tmp ist tmpfs (RAM). Alte CSVs akkumulieren sich → RAM-Druck.
+    # Erst loeschen wenn die gerade gesendete Datei beim Client angekommen ist.
+    # Sicherheits-Check: nur Dateien aelter als 30s (gerade gesendete sicher ausgeschlossen).
+    @after_this_request
+    def cleanup_tmp_csvs(response):
+        if response.status_code in (200, 206):
+            try:
+                now = time.time()
+                cleaned = 0
+                freed_kb = 0
+                for old in glob.glob("/tmp/Records_F9P_*.csv"):
+                    try:
+                        if os.path.abspath(old) == os.path.abspath(path):
+                            continue
+                        if now - os.path.getmtime(old) < 30:
+                            continue
+                        size_kb = os.path.getsize(old) // 1024
+                        os.remove(old)
+                        cleaned += 1
+                        freed_kb += size_kb
+                    except OSError:
+                        pass
+                if cleaned:
+                    print(f"[Export] /tmp aufgeraeumt: {cleaned} alte CSV(s) geloescht ({freed_kb} KB frei)")
+            except Exception as e:
+                print(f"[Export] /tmp cleanup-Fehler (ignoriert): {e}")
+        return response
+
     return send_file(path, as_attachment=True, download_name=filename, mimetype="text/csv")
 
 
