@@ -683,7 +683,7 @@ HTML_PAGE = '''
           longChart.update();
         }).catch(err => console.warn('fetch error', err));
       }
-      setInterval(fetchData, 200);
+      setInterval(fetchData, 1000);
       {% endif %}
 
       function exportAndRedirect() {

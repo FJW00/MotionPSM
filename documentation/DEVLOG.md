@@ -4,6 +4,20 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-01 — Frontend-Polling 200ms → 1000ms (DLG-Lock-Kandidat)
+
+**Befund:** Hof-Test 21:00 mit lean-producer + stop-cleanup + break→continue zeigte trotz allem **200ms-Pattern in CSV mit 42× "3 Rover gleichzeitig" Drop-Pattern**. Im Log-Output: Browser pollt `GET /data` alle 200ms = 5×/s.
+
+Flask läuft im gleichen Python-Prozess wie Producer-Threads. Pro `/data`-Response: ~30-50ms CPU (math, jsonify, _g für 25 Variablen). Python's GIL → Producer-Threads sind während Flask-Response BLOCKIERT → verpassen NAV-RELPOSNED-Verarbeitung → unvollständige iTOW-Slots → CSV jede 200ms statt 100ms.
+
+**Fix:** Frontend `setInterval(fetchData, 200)` → `setInterval(fetchData, 1000)`. 1 UI-Update pro Sekunde statt 5. Tablet zeigt Boom-Schwingung weiterhin flüssig (Schwingung ist 0.5-2 Hz, Update-Rate 1 Hz reicht für visuelle Demo).
+
+**Erwartung:** Producer-Threads bekommen GIL zurück → 100ms-Quote sollte deutlich steigen.
+
+**Wenn DLG-tauglich:** lean-producer → main merge. DLG-Lock.
+
+---
+
 ## 2026-06-01 — Logger: break → continue (letzter Code-Test vor DLG-Lock)
 
 **Hypothese:** Aktuell stoppt der Logger beim ersten jungen unvollständigen iTOW. Komplette spätere iTOWs müssen auf nächsten Cycle warten (max 20ms). Bei kontinuierlichem Stream mit gelegentlichen unvollständigen iTOWs könnte das die Output-Rate begrenzen.
