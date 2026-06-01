@@ -4,6 +4,25 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-01 — Logger: break → continue (letzter Code-Test vor DLG-Lock)
+
+**Hypothese:** Aktuell stoppt der Logger beim ersten jungen unvollständigen iTOW. Komplette spätere iTOWs müssen auf nächsten Cycle warten (max 20ms). Bei kontinuierlichem Stream mit gelegentlichen unvollständigen iTOWs könnte das die Output-Rate begrenzen.
+
+**Change:** `break` → `continue`. Logger iteriert nun durch ALLE iTOWs in samples_by_itow:
+- Komplette → schreiben + del
+- Zu alte (>SAMPLE_MAX_AGE_MS) ohne komplett → drop + del
+- Junge unvollständige → continue (im Dict lassen für nächsten Cycle)
+
+**Erwartung:** wenn ein junger iTOW (z.B. 50ms alt) inkomplett ist, aber der nächste iTOW (10ms alt) komplett — wird der jüngere KOMPLETTE jetzt direkt geschrieben. Vorher blockierte der ältere unvollständige.
+
+**Trade-off:** CSV-Zeilen-Reihenfolge nicht mehr strikt aufsteigend nach iTOW (kann aber via Spalte sortiert werden — keine echte Einschränkung).
+
+**Risiko:** sehr gering. Wenn keine Verbesserung → Bottleneck liegt woanders (vermutlich Producer-Thread-Latency / Multi-Port-USB).
+
+**Test offen:** Bench-Test refactor/lean-producer. Wenn deutlich besser → DLG-Version. Wenn nicht → akzeptieren dass 5-7 Hz mit aktuellem Stand der finale ist.
+
+---
+
 ## 2026-06-01 — Stop-Cleanup-Fix: Thread + Stream Lifecycle sauber
 
 **Befund:** Falk hat bemerkt — frischer Server-Start liefert deutlich bessere CSV-Daten als nach mehreren Start/Stop-Zyklen. Drop-Log bestätigt:

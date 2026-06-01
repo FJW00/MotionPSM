@@ -542,8 +542,10 @@ def csv_logger_thread_buffered():
                         process_drop.append((itow, missing))
                         del samples_by_itow[itow]
                     else:
-                        # Sample ist jung und unvollständig — warte auf restliche Daten
-                        break
+                        # Sample ist jung und unvollständig — überspringen, vielleicht
+                        # spätere iTOWs sind aber bereits komplett. Junges Sample bleibt
+                        # im Dict für nächsten Cycle.
+                        continue
 
             # Außerhalb des Locks: CSV-Zeilen schreiben (kann lang dauern bei _fmt etc.)
             for itow, sample in process_complete:
