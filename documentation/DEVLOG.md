@@ -4,6 +4,28 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-01 — Stop-Cleanup-Fix: Thread + Stream Lifecycle sauber
+
+**Befund:** Falk hat bemerkt — frischer Server-Start liefert deutlich bessere CSV-Daten als nach mehreren Start/Stop-Zyklen. Drop-Log bestätigt:
+- `logger fresh after start`: 32 Drop-Lines, fast keine "3 Rover gleichzeitig"
+- `logger ubx` (nach vorherigem Run): 128 Drop-Lines, 82× "3 Rover gleichzeitig"
+
+**Ursache:** Im alten `stop_measurement()`:
+- `t.join(timeout=2)` aber Producer-Threads sind in `ubr.read()` mit Serial-Timeout 3s blocking → Join gibt nach 2s auf
+- Daemon-Threads laufen im Hintergrund weiter
+- Beim nächsten `start_measurement()`: neue Threads + alte = mehr Threads → mehr GIL-Druck → mehr Drops
+- `samples_by_itow.clear()` passierte nur in start, nicht in stop → Race möglich
+
+**Fix:**
+1. Streams ZUERST schließen → Producer-`ubr.read()` kriegt SerialException → Thread durchläuft Catch-Block → kann stop_event prüfen → endet
+2. Join-Timeout auf 4s erhöht
+3. `samples_by_itow.clear()` + `csv_data_buffer.clear()` in stop_measurement
+4. start_measurement: defensiv prüfen ob alte Messung noch läuft + alte Threads noch leben
+
+**Test offen:** Mehrere start/stop-Zyklen am Pi — sollte konsistent gleich gute Daten liefern wie frischer Start.
+
+---
+
 ## 2026-06-01 — Lean Producer Threads: schwere Berechnungen raus, GIL entlastet
 
 **Befund 31.05. (Hof-Tests, alle Browser-Tabs zu):**

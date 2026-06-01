@@ -747,14 +747,31 @@ def start_measurement():
     global measurement_running
     global lenght_mov_avg
 
+    # Defensiver Cleanup falls vorherige Messung nicht sauber gestoppt wurde
+    if measurement_running:
+        print("⚠ start_measurement: vorherige Messung läuft noch — erzwinge Stop")
+        try:
+            stop_measurement()
+        except Exception as e:
+            print(f"  forced-stop-Fehler: {e}")
+
+    # Alte daemon-Threads die noch leben checken
+    try:
+        old_alive = [t for t in threads if t.is_alive()]
+        if old_alive:
+            print(f"⚠ {len(old_alive)} alte Thread(s) noch aktiv: {[t.name for t in old_alive]}")
+            for t in old_alive:
+                t.join(timeout=1)
+    except NameError:
+        pass  # threads noch nicht definiert beim allerersten Start
+
     threads = []
     stop_event = threading.Event()
     csv_data_buffer.clear()
-    # Refactor C: samples_by_itow zwischen Messungen sauber resetten
     with samples_lock:
         samples_by_itow.clear()
 
-    print(">>> start_measurement() wurde aufgerufen")
+    print(">>> start_measurement() wurde aufgerufen (frischer State)")
 
     #-----Konfigurationsdatei lesen------
     config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')
@@ -818,32 +835,42 @@ def stop_measurement():
     global stop_event
     global measurement_running
 
+    if not measurement_running:
+        print("stop_measurement: Messung läuft gar nicht — nichts zu tun.")
+        return
+
+    print(">>> stop_measurement() wird ausgeführt — Cleanup...")
     stop_event.set()
+
+    # 1. ZUERST Streams schließen: Producer-Threads bekommen Exception in ubr.read()
+    #    → können das stop_event sofort checken, statt im Serial-timeout=3s zu hängen
+    for name, stream in [("streamBase", streamBase),
+                          ("streamRover1", streamRover1),
+                          ("streamRover2", streamRover2),
+                          ("streamRover3", streamRover3)]:
+        try:
+            if stream and stream.is_open:
+                stream.close()
+                print(f"  {name} geschlossen.")
+        except Exception as e:
+            print(f"  {name} close-Fehler: {e}")
+
+    # 2. JETZT auf Threads warten — längeres Timeout weil sie noch Exception verarbeiten
     for t in threads:
-        print(f"Stoppe Thread: {t.name}...")
-        t.join(timeout=2) #Max 2 Sekunden warten
+        t.join(timeout=4)
         if t.is_alive():
-            print(f"Thread {t.name} hat nicht sauber beendet.")
+            print(f"  ⚠ Thread {t.name} hat nicht sauber beendet (daemon, läuft im Hintergrund weiter)")
         else:
-            print(f"Thread {t.name} beendet.")
+            print(f"  ✓ Thread {t.name} beendet.")
 
-    if streamBase.is_open:
-        streamBase.close()
-        print("StreamBase geschlossen.")
-
-    if streamRover1.is_open:
-        streamRover1.close()
-        print("StreamRover1 geschlossen.")
-
-    if streamRover2.is_open:
-        streamRover2.close()
-        print("StreamRover2 geschlossen.")
-
-    if streamRover3.is_open:
-        streamRover3.close()
-        print("StreamRover3 geschlossen.")
+    # 3. Sample-State leeren: kein Race beim nächsten start_measurement möglich
+    with samples_lock:
+        samples_by_itow.clear()
+    csv_data_buffer.clear()
+    print("  Sample-Dict + CSV-Buffer geleert.")
 
     measurement_running = False
+    print(">>> stop_measurement() fertig.")
 
 #-------Running and Key Interrupt-----------
 if __name__ == "__main__":
