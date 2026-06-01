@@ -4,6 +4,50 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-01 abends — DLG-Lock: /tmp-Cleanup + USB-Reset-Skript
+
+**Befund Akkumulations-Bug (klar bestätigt):**
+- Direkt nach Pi-Reboot + F9P-Reboot: iTOW-Mittel **140-155 ms** (≈ 6.5-7 Hz)
+- 2.-N. Messung (nur Server-Restart): iTOW-Mittel **200-247 ms** (≈ 4-5 Hz)
+- Reproduziert mit beiden Base-Configs (Original und USBonly_v2). Modul ist NICHT die Ursache.
+- Frontend-Polling-Reduktion (1000ms) brachte _nichts_ — paradoxerweise zeigte 100ms-Polling die beste Quote.
+  Heißt: GIL-Polling allein erklärt den Bug nicht.
+
+**Hypothese:** Pi-USB-Subsystem oder Python-State akkumuliert zwischen Server-Restarts. Nur Pi-Reboot setzt vollständig zurück. Saubere Lösung wäre Subprocess-Architektur (gps_measurement als eigener Python-Prozess, getötet beim Stop) — aber zu viel Refactor 13 Tage vor DLG.
+
+**Zwei pragmatische Quick-Hacks für DLG:**
+
+### 1. `/tmp`-Cleanup nach erfolgreichem CSV-Download
+`server.py` `/export`-Endpoint: nach `send_file` über `after_this_request`-Hook alle `/tmp/Records_F9P_*.csv` älter als 30s löschen (gerade gesendete Datei sicher ausgenommen). Nur wenn Response-Status 200/206.
+
+**Warum:** Pi's `/tmp` ist tmpfs (RAM). Bei vielen Test-Runs ohne Cleanup wächst es. Reduziert RAM-Druck.
+
+**Sicherheit:** Cleanup läuft erst NACH erfolgreichem Download — kein Datenverlust möglich.
+
+### 2. `tools/usb_reset_f9p.sh` — F9P USB-Reset ohne Pi-Reboot
+Bindet die 4 F9P-USB-Devices über `/sys/bus/usb/drivers/usb/{unbind,bind}` ab und wieder an. Setzt USB-Subsystem-State zurück ohne Reboot (~5s Dauer statt ~60s).
+
+**Verwendung:**
+```
+# Server vorher stoppen:
+sudo systemctl stop motionpsm    # falls Autostart
+# oder Strg+C im Server-Terminal
+
+sudo bash tools/usb_reset_f9p.sh
+
+# danach Server wieder starten
+```
+
+**Test-Plan:** morgen am Pi testen — wenn nach Reset wieder ~140ms-Mittelwert → Workaround validiert für DLG.
+
+### Was NICHT gefixt ist
+- Eigentliche Akkumulations-Ursache (Subprocess-Refactor post-DLG)
+- 100ms-Quote im Frontend-Live-View (Live-View ist nicht der CSV-Logger; Visualisierung ist OK)
+
+**Risiko-Abwägung:** kein Code-Risiko (nur additive Maßnahmen). Cleanup im Export ist defensiv (after_this_request-Hook fängt Exceptions, dropt sie still). USB-Reset-Skript wird manuell aufgerufen.
+
+---
+
 ## 2026-06-01 — Frontend-Polling 200ms → 1000ms (DLG-Lock-Kandidat)
 
 **Befund:** Hof-Test 21:00 mit lean-producer + stop-cleanup + break→continue zeigte trotz allem **200ms-Pattern in CSV mit 42× "3 Rover gleichzeitig" Drop-Pattern**. Im Log-Output: Browser pollt `GET /data` alle 200ms = 5×/s.
