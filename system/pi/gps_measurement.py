@@ -756,7 +756,8 @@ def csv_logger_thread_buffered():
                         process_complete.append((itow, sample))
                         del samples_by_itow[itow]
                     elif newest_itow - itow > SAMPLE_MAX_AGE_MS:
-                        process_drop.append(itow)
+                        missing = {"r1","r2","r3","base"} - set(sample.keys())
+                        process_drop.append((itow, missing))
                         del samples_by_itow[itow]
                     else:
                         # Sample ist jung und unvollständig — warte auf restliche Daten
@@ -843,7 +844,12 @@ def csv_logger_thread_buffered():
 
             # Drop-Diagnostik nur loggen wenn was passiert (zur Bench-Test-Analyse)
             if process_drop:
-                print(f"[Logger] dropped {len(process_drop)} unvollständige iTOW(s) > {SAMPLE_MAX_AGE_MS}ms alt")
+                from collections import Counter as _C
+                _miss = _C()
+                for _it, _mset in process_drop:
+                    for _s in _mset:
+                        _miss[_s] += 1
+                print(f"[Logger] dropped {len(process_drop)} iTOW(s) >{SAMPLE_MAX_AGE_MS}ms. Fehlend: {dict(_miss)}")
 
         except Exception as e:
             print("[Logger Thread] Fehler:", e)
