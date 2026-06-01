@@ -267,6 +267,8 @@ def Rover1_Thread():
                 Rover_D = ((parsed_data.relPosD or 0) + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)) * 1e-2
                 # Snapshot für Mittelachsen-Berechnung im Logger
                 last_relNED_r1 = (Rover_N, Rover_E, Rover_D)
+                # Refactor 01.06.: height_boom direkt aus -D-Komponente (cm, positiv wenn Rover über Base)
+                height_boom = -Rover_D * 100
                 #rel_heading = (parsed_data.relPosHeading * 1e-5)
                 rel_heading = parsed_data.relPosHeading
 
@@ -349,6 +351,8 @@ def Rover2_Thread():
                 Rover_D = ((parsed_data.relPosD or 0) + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)) * 1e-2
                 # Snapshot für Mittelachsen-Berechnung im Logger
                 last_relNED_r2 = (Rover_N, Rover_E, Rover_D)
+                # Refactor 01.06.: height_boom direkt aus -D-Komponente (cm, positiv wenn Rover über Base)
+                height_boom = -Rover_D * 100
                 #rel_heading = (parsed_data.relPosHeading * 1e-5)
                 rel_heading = parsed_data.relPosHeading
 
@@ -448,6 +452,8 @@ def Rover3_Thread():
                 Rover_D = ((parsed_data.relPosD or 0) + (getattr(parsed_data, 'relPosHPD', 0) * 1e-2)) * 1e-2
                 # Snapshot für Mittelachsen-Berechnung im Logger
                 last_relNED_r3 = (Rover_N, Rover_E, Rover_D)
+                # Refactor 01.06.: height_boom direkt aus -D-Komponente (cm, positiv wenn Rover über Base)
+                height_boom = -Rover_D * 100
                 rel_heading = parsed_data.relPosHeading
 
                 if rel_heading is not None:

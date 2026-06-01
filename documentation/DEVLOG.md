@@ -28,6 +28,8 @@ Bei 30 NAV-RELPOSNED/s (3 Rover × 10 Hz) kämpfen die Threads um den GIL → we
 
 **Erwartung:** Producer-Threads sind ca. 5-10× weniger CPU-intensiv pro Message. GIL-Last drastisch reduziert. 100ms-Quote sollte deutlich steigen.
 
+**Nachtrag 01.06.:** `height_boom` doch behalten — aus `-Rover_D * 100` (cm, positiv wenn Rover über Base). Eine Zeile pro Rover-Thread, keine Last-Relevanz.
+
 **Test offen:** Hof-Bench-Test auf `refactor/lean-producer`. Drop-Debug-Output zeigt ob "alle 3 Rover gleichzeitig fehlen"-Pattern verschwindet.
 
 **Risiko:** sehr gering. Wenn keine Verbesserung, einfach zurück auf refactor/logger-itow-dict. Geometrie/Mess-Pipeline (Var A/B, Tare) unverändert.
