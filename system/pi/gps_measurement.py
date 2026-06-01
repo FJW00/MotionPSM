@@ -187,8 +187,16 @@ def BaseThread():
     Base_Heading = 0
 
     while not stop_event.is_set():
-        ubr = UBXReader(streamBase, validate=0)
-        raw_data, parsed_data = ubr.read()
+        try:
+            ubr = UBXReader(streamBase, validate=0)
+            raw_data, parsed_data = ubr.read()
+        except (TypeError, OSError, Exception) as e:
+            # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
+            if stop_event.is_set():
+                print(f"[BaseThread] Stream zu, beende sauber.")
+                return
+            print(f"[BaseThread] Read-Fehler: {type(e).__name__}: {e}")
+            continue
 
         if parsed_data and hasattr(parsed_data, 'identity'):
             if parsed_data.identity == 'GNGGA':
@@ -235,8 +243,16 @@ def Rover1_Thread():
     mov_avg_heading = 0
 
     while not stop_event.is_set():
-        ubr = UBXReader(streamRover1, validate=0)
-        raw_data, parsed_data = ubr.read()
+        try:
+            ubr = UBXReader(streamRover1, validate=0)
+            raw_data, parsed_data = ubr.read()
+        except (TypeError, OSError, Exception) as e:
+            # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
+            if stop_event.is_set():
+                print(f"[Rover1_Thread] Stream zu, beende sauber.")
+                return
+            print(f"[Rover1_Thread] Read-Fehler: {type(e).__name__}: {e}")
+            continue
 
         if parsed_data and hasattr(parsed_data, 'identity'):
 
@@ -319,8 +335,16 @@ def Rover2_Thread():
     mov_avg_heading = 0
 
     while not stop_event.is_set():
-        ubr = UBXReader(streamRover2, validate=0)
-        raw_data, parsed_data = ubr.read()
+        try:
+            ubr = UBXReader(streamRover2, validate=0)
+            raw_data, parsed_data = ubr.read()
+        except (TypeError, OSError, Exception) as e:
+            # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
+            if stop_event.is_set():
+                print(f"[Rover2_Thread] Stream zu, beende sauber.")
+                return
+            print(f"[Rover2_Thread] Read-Fehler: {type(e).__name__}: {e}")
+            continue
 
         if parsed_data and hasattr(parsed_data, 'identity'):
 
@@ -416,8 +440,16 @@ def Rover3_Thread():
     mov_avg_heading = 0
 
     while not stop_event.is_set():
-        ubr = UBXReader(streamRover3, validate=0)
-        raw_data, parsed_data = ubr.read()
+        try:
+            ubr = UBXReader(streamRover3, validate=0)
+            raw_data, parsed_data = ubr.read()
+        except (TypeError, OSError, Exception) as e:
+            # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
+            if stop_event.is_set():
+                print(f"[Rover3_Thread] Stream zu, beende sauber.")
+                return
+            print(f"[Rover3_Thread] Read-Fehler: {type(e).__name__}: {e}")
+            continue
 
         if parsed_data and hasattr(parsed_data, 'identity'):
 
@@ -865,11 +897,12 @@ def stop_measurement():
         else:
             print(f"  ✓ Thread {t.name} beendet.")
 
-    # 3. Sample-State leeren: kein Race beim nächsten start_measurement möglich
+    # 3. Sample-State leeren: samples_by_itow geleert (alte sample-Refs raus).
+    #    csv_data_buffer wird NICHT geleert — export_to_csv() braucht ihn nach dem Stop!
+    #    Wird stattdessen am Anfang von start_measurement() geleert.
     with samples_lock:
         samples_by_itow.clear()
-    csv_data_buffer.clear()
-    print("  Sample-Dict + CSV-Buffer geleert.")
+    print("  Sample-Dict geleert (csv_data_buffer bleibt für Export).")
 
     measurement_running = False
     print(">>> stop_measurement() fertig.")
