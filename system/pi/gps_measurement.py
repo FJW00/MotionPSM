@@ -198,44 +198,8 @@ def BaseThread():
                 if len(str(parsed_data.lat)) > 1:
                     Base_lat = float(parsed_data.lat)
                     Base_lon = float(parsed_data.lon)
-                    base_calc_heading_buffer.append((Base_time, Base_lat, Base_lon))
-
-                # Heading der Base über verktorielle Berechung Kalkulieren
-                if len(base_calc_heading_buffer) >= 2:
-                    # Früheste und letzte Position der Basis
-                    _, lat1, lon1 = base_calc_heading_buffer[0]
-                    _, lat2, lon2 = base_calc_heading_buffer[-1]
-
-                    point1 = Point(latitude=lat1, longitude=lon1)
-                    point2 = Point(latitude=lat2, longitude=lon2)
-
-                    # Berechne die geodätische Distanz
-                    movement = geodesic(point1, point2).meters
-
-                    if movement > 0.01: # Nur sinnvoll berechnen, wenn Bewegung > 5cm
-                        delta_lon_rad = radians(lon2 - lon1)
-                        lat1_rad = radians(lat1)
-                        lat2_rad = radians(lat2)
-
-                        y = sin(delta_lon_rad) * cos(lat2_rad)
-                        x = cos(lat1_rad) * sin(lat2_rad) - sin(lat1_rad) * cos(lat2_rad) * cos(delta_lon_rad)
-                        
-                        raw_heading = degrees(atan2(y, x))
-                        
-                        # Sicherstellen, dass raw_heading im Bereich -180 bis 180 liegt
-                        raw_heading = (raw_heading + 180) % 360 - 180 
-                        
-                        base_heading_smooth_buffer.append(raw_heading)
-
-                        # Gleitenden Mittelwert für Base_Heading berechnen (Kreismittelwert)
-                        if len(base_heading_smooth_buffer) > 1:
-                            sin_sum = sum([sin(radians(h)) for h in base_heading_smooth_buffer])
-                            cos_sum = sum([cos(radians(h)) for h in base_heading_smooth_buffer])
-                            Base_Heading = degrees(atan2(sin_sum, cos_sum))
-                            # Normalisierung auf -180 bis 180 Grad
-                            Base_Heading = (Base_Heading + 180) % 360 - 180
-                        else:
-                            Base_Heading = raw_heading # raw_heading ist bereits normalisiert
+                # Refactor 01.06.: Base_Heading nicht mehr berechnet (kommt aus Vektor Base->R3 im Logger).
+                # Spart geodesic + Point + sin/cos-Mittelwert in jedem GNGGA -> entlastet GIL.
 
             elif parsed_data.identity == 'NAV-PVT':
                 Base_time = parsed_data.iTOW
@@ -284,12 +248,8 @@ def Rover1_Thread():
                     Rover_lat = float(parsed_data.lat)
                     Rover_lon = float(parsed_data.lon)
 
-                #Calculation height varriation boom
-                if Rover_alt is not None and Base_alt is not None:
-                    if init_height is None:
-                        init_height = Base_alt - Rover_alt
-                    else:
-                        height_boom = init_height - (Base_alt - Rover_alt) *100
+                # Refactor 01.06.: height_boom nicht mehr aus alt-Diff berechnet (war Legacy).
+                # Bei Bedarf kann Rover_D direkt als Höhen-Indikator dienen.
 
             elif parsed_data.identity == 'GNRMC':
                 Rover_date = parsed_data.date
@@ -313,102 +273,18 @@ def Rover1_Thread():
                 if rel_heading is not None:
                     rel_heading = (rel_heading + 180) % 360 - 180
 
-                # Winkeländerung
-                if rel_heading is not None and abs(rel_heading) > 0.0:
-                    if init_heading is None:
-                        if init_heading_iTOW is None:
-                            init_heading_iTOW = Rover_time  # Zeitpunkt merken
-                        elif Rover_time - init_heading_iTOW > 500:  # nach 500 ms initialisieren
-                            init_heading = rel_heading  # einmalig setzen
-                    else:
-                        # Berechnung nur, wenn init_heading bereits gesetzt wurde
-                        raw_delta = rel_heading - init_heading
-                        #raw_delta = rel_heading - Base_Heading - 90.0 #offset
-                        abs_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
-                        #current_vibration_rover1 = abs_heading
-                        #vibration_history_rover1.append(abs_heading)
-                    
-                #Linear Regression
-                if rel_heading != 0:
-                    heading_buffer_linear_1.append((rel_heading, Rover_time))
-                    valid_values = [(h, t) for h, t in heading_buffer_linear_1 if h != 0]
-                    if len(valid_values) >= 20: #20 = 2sekunden
-                        recent = valid_values[-20:]
-                        angles = [h for h, _ in recent]
-                        times = [t/1000 for _, t in recent]
-                        x = np.array(times)
-                        y = np.array(angles)
-                        A = np.vstack([x, np.ones(len(x))]).T
-                        m, _ = (np.linalg.lstsq(A, y, rcond=None)[0])
-                        R1_angular_velocity = m
-                    else:
-                        R1_angular_velocity = 0 
-                else:
-                        R1_angular_velocity = 0
-                
-                #Moving Average
-                if rel_heading != 0:
-                    rel_heading_buffer_1.append(rel_heading)
-                    if len(rel_heading_buffer_1) > lenght_mov_avg:
-                        rel_heading_buffer_1.pop(0)  # Ältesten Wert entfernen
-
-                    # Gleitender Mittelwert
-                    if len(rel_heading_buffer_1) >= 10:  # Mindestanzahl für Mittelwert
-                        angles_rad = [radians(h) for h in rel_heading_buffer_1]
-
-                        # Mittelwert über Sinus und Kosinus
-                        sin_sum = sum(sin(a) for a in angles_rad)
-                        cos_sum = sum(cos(a) for a in angles_rad)
-
-                        mean_angle_rad = atan2(sin_sum / len(angles_rad), cos_sum / len(angles_rad))
-                        smoothed_heading = degrees(mean_angle_rad)
-
-                        # Abweichung berechnen
-                        raw_smooth_heading = smoothed_heading - rel_heading #- smoothed_heading
-                        mov_avg_heading = degrees(atan2(sin(radians(raw_smooth_heading)), cos(radians(raw_smooth_heading))))
-                        
-                        current_vibration_rover1 = mov_avg_heading
-                        vibration_history_rover1.append(mov_avg_heading)
-                    else:
-                        current_vibration_rover1 = 0  # Noch nicht genug Daten
-                '''
-                # Exponential Moving Average statt gleitender Mittelwert
-                if rel_heading != 0:
-
-                    # Initialisierung (nur beim ersten Durchlauf)
-                    if 'smoothed_heading' not in locals():
-                        smoothed_heading = rel_heading
-                        vibration_history_rover1 = []
-
-                    # Glättungsfaktor (klein = stärker geglättet, groß = reaktiver)
-                    alpha = 0.05  # Typisch: 0.05 bis 0.2
-
-                    # Differenz korrekt normieren auf [-180°, 180°]
-                    delta = rel_heading - smoothed_heading
-                    delta = degrees(atan2(sin(radians(delta)), cos(radians(delta))))
-
-                    # EMA anwenden
-                    smoothed_heading += alpha * delta
-
-                    # Abweichung zwischen geglättetem und aktuellem Winkel berechnen
-                    raw_smooth_heading = smoothed_heading - rel_heading
-                    mov_avg_heading = degrees(atan2(sin(radians(raw_smooth_heading)), cos(radians(raw_smooth_heading))))
-
-                    # Ergebnis speichern
-                    current_vibration_rover1 = mov_avg_heading
-                    vibration_history_rover1.append(mov_avg_heading)
-
-                else:
-                    current_vibration_rover1 = 0  # rel_heading == 0 → keine Bewegung
-                '''
-                #Delta Heading
-                if rel_heading != 0:
-                    heading_buffer_delta_1.append((rel_heading, Rover_time))
-                    valid_values_heading = [(h, t) for h, t in heading_buffer_delta_1 if h != 0]
-                    if len(valid_values_heading) >= 2:
-                        (heading1, t1), (heading2, t2) = valid_values_heading[-2:]
+                # Refactor 01.06.: minimal nur delta_heading aus letzten 2 rel_heading-Werten.
+                # RAUS: angular_velocity (lstsq), mov_avg_heading (sin/cos-buffer), abs_heading (init-Logik),
+                # height_boom (Base_alt-Diff), current_vibration. Entlastet GIL.
+                if rel_heading is not None and rel_heading != 0:
+                    heading_buffer_delta_3.append((rel_heading, Rover_time))
+                    if len(heading_buffer_delta_3) >= 2:
+                        (heading1, t1), (heading2, t2) = list(heading_buffer_delta_3)[-2:]
                         raw_delta = heading2 - heading1
                         delta_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
+
+
+
 
         #-------------Message-----------------
                 Rover_1_outline = ";".join(map(_fmt, [
@@ -454,12 +330,8 @@ def Rover2_Thread():
                     Rover_lat = float(parsed_data.lat)
                     Rover_lon = float(parsed_data.lon)
 
-                #Calculation height varriation boom
-                if Rover_alt is not None and Base_alt is not None:
-                    if init_height is None:
-                        init_height = Base_alt - Rover_alt
-                    else:
-                        height_boom = init_height - (Base_alt - Rover_alt) *100
+                # Refactor 01.06.: height_boom nicht mehr aus alt-Diff berechnet (war Legacy).
+                # Bei Bedarf kann Rover_D direkt als Höhen-Indikator dienen.
 
             elif parsed_data.identity == 'GNRMC':
                 Rover_date = parsed_data.date
@@ -484,63 +356,11 @@ def Rover2_Thread():
                     rel_heading = (rel_heading + 180) % 360 - 180
 
                 # Winkeländerung
-                if rel_heading is not None and abs(rel_heading) > 0.0:
-                    if init_heading is None:
-                        if init_heading_iTOW is None:
-                            init_heading_iTOW = Rover_time  # Zeitpunkt merken
-                        elif Rover_time - init_heading_iTOW > 500:  # nach 500 ms initialisieren
-                            init_heading = rel_heading  # einmalig setzen
-                    else:
-                        # Berechnung nur, wenn init_heading bereits gesetzt wurde
-                        raw_delta = rel_heading - init_heading
-                        #raw_delta = rel_heading - Base_Heading + 90.0
-                        abs_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
-                        #current_vibration_rover2 = abs_heading
-                        #vibration_history_rover2.append(abs_heading)
 
-                #Linear Regression
-                if rel_heading != 0:
-                    heading_buffer_linear_2.append((rel_heading, Rover_time))
-                    valid_values = [(h, t) for h, t in heading_buffer_linear_2 if h != 0]
-                    if len(valid_values) >= 20:
-                        recent = valid_values[-20:]
-                        angles = [h for h, _ in recent]
-                        times = [t/1000 for _, t in recent]
-                        x = np.array(times)
-                        y = np.array(angles)
-                        A = np.vstack([x, np.ones(len(x))]).T
-                        m, _ = (np.linalg.lstsq(A, y, rcond=None)[0])
-                        R2_angular_velocity = m
-                    else:
-                        R2_angular_velocity = 0 
-                else:
-                        R2_angular_velocity = 0
-                
-                #Moving Average
-                if rel_heading != 0:
-                    rel_heading_buffer_2.append(rel_heading)
-                    if len(rel_heading_buffer_2) > lenght_mov_avg:
-                        rel_heading_buffer_2.pop(0)  # Ältesten Wert entfernen
+                # Refactor 01.06.: heavy Berechnungen raus (lstsq/mov_avg/init_heading).
+                # Spart GIL-Last in Rover3_Thread. Behalten: delta_heading (einfach).
 
-                    # Gleitender Mittelwert
-                    if len(rel_heading_buffer_2) >= 10:  # Mindestanzahl für Mittelwert
-                        angles_rad = [radians(h) for h in rel_heading_buffer_2]
 
-                        # Mittelwert über Sinus und Kosinus
-                        sin_sum = sum(sin(a) for a in angles_rad)
-                        cos_sum = sum(cos(a) for a in angles_rad)
-
-                        mean_angle_rad = atan2(sin_sum / len(angles_rad), cos_sum / len(angles_rad))
-                        smoothed_heading = degrees(mean_angle_rad)
-
-                        # Abweichung berechnen
-                        raw_smooth_heading = smoothed_heading - rel_heading #- smoothed_heading
-                        mov_avg_heading = degrees(atan2(sin(radians(raw_smooth_heading)), cos(radians(raw_smooth_heading))))
-
-                        current_vibration_rover2 = mov_avg_heading
-                        vibration_history_rover2.append(mov_avg_heading)
-                    else:
-                        current_vibration_rover2 = 0  # Noch nicht genug Daten
 
 
                 #Delta Heading
@@ -634,53 +454,9 @@ def Rover3_Thread():
                     rel_heading = (rel_heading + 180) % 360 - 180
 
                 # Winkeländerung
-                if rel_heading is not None and abs(rel_heading) > 0.0:
-                    if init_heading is None:
-                        if init_heading_iTOW is None:
-                            init_heading_iTOW = Rover_time
-                        elif Rover_time - init_heading_iTOW > 500:
-                            init_heading = rel_heading
-                    else:
-                        raw_delta = rel_heading - init_heading
-                        abs_heading = degrees(atan2(sin(radians(raw_delta)), cos(radians(raw_delta))))
 
-                # Linear Regression
-                if rel_heading != 0:
-                    heading_buffer_linear_3.append((rel_heading, Rover_time))
-                    valid_values = [(h, t) for h, t in heading_buffer_linear_3 if h != 0]
-                    if len(valid_values) >= 20:
-                        recent = valid_values[-20:]
-                        angles = [h for h, _ in recent]
-                        times = [t/1000 for _, t in recent]
-                        x = np.array(times)
-                        y = np.array(angles)
-                        A = np.vstack([x, np.ones(len(x))]).T
-                        m, _ = (np.linalg.lstsq(A, y, rcond=None)[0])
-                        R3_angular_velocity = m
-                    else:
-                        R3_angular_velocity = 0
-                else:
-                    R3_angular_velocity = 0
+                # Refactor 01.06.: heavy Berechnungen raus (lstsq/mov_avg/init_heading).
 
-                # Moving Average
-                if rel_heading != 0:
-                    rel_heading_buffer_3.append(rel_heading)
-                    if len(rel_heading_buffer_3) > lenght_mov_avg:
-                        rel_heading_buffer_3.pop(0)
-
-                    if len(rel_heading_buffer_3) >= 10:
-                        angles_rad = [radians(h) for h in rel_heading_buffer_3]
-                        sin_sum = sum(sin(a) for a in angles_rad)
-                        cos_sum = sum(cos(a) for a in angles_rad)
-                        mean_angle_rad = atan2(sin_sum / len(angles_rad), cos_sum / len(angles_rad))
-                        smoothed_heading = degrees(mean_angle_rad)
-                        raw_smooth_heading = smoothed_heading - rel_heading
-                        mov_avg_heading = degrees(atan2(sin(radians(raw_smooth_heading)), cos(radians(raw_smooth_heading))))
-
-                        current_vibration_rover3 = mov_avg_heading
-                        vibration_history_rover3.append(mov_avg_heading)
-                    else:
-                        current_vibration_rover3 = 0
 
                 # Delta Heading
                 if rel_heading != 0:

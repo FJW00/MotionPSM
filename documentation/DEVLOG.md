@@ -4,6 +4,36 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-01 — Lean Producer Threads: schwere Berechnungen raus, GIL entlastet
+
+**Befund 31.05. (Hof-Tests, alle Browser-Tabs zu):**
+Drop-Debug-Output zeigt klares Pattern: in 80.5% der Drops fehlen ALLE 3 ROVER gleichzeitig, Base ist da. 9.8% alle 4 fehlen, 7.3% nur Base. Browser-Polling-Hypothese damit ausgeschlossen.
+
+**Diagnose:** Python GIL erlaubt nur 1 Thread Bytecode auf einmal. Die 3 Rover-Threads machen pro NAV-RELPOSNED:
+- `np.linalg.lstsq` für angular_velocity (Linear Regression über 20 Punkte)
+- Moving-Average mit sin/cos-Schleife über buffer
+- init_heading + abs_heading Logik
+- height_boom (Base_alt - Rover_alt)
+
+Bei 30 NAV-RELPOSNED/s (3 Rover × 10 Hz) kämpfen die Threads um den GIL → werden gleichzeitig blockiert → Samples gehen verloren.
+
+**Falks Entscheidung (01.06.):** Viele dieser Berechnungen sind Legacy aus der BA-Zeit und nicht mehr DLG-relevant. Behalten werden pro Rover nur: Heading, delta_Heading, Date, Time, Quality, Lon, Lat, accHeading, N, E, D, alt, Speed. Variante A/B + Filter + Tare bleiben im Logger unverändert (nutzen nur N/E/D).
+
+**Änderungen:**
+
+- BaseThread: `geodesic()` + `Point()` + sin/cos-Heading-Mittelwert raus. Base_Heading bleibt 0 (kommt aus Vektor Base→R3 im Logger).
+- Rover1/2/3_Thread: `np.linalg.lstsq` (angular_velocity), `mov_avg_heading` mit sin/cos, `init_heading`/`abs_heading`, `current_vibration_*`, `height_boom` aus Base_alt-Diff — alle RAUS.
+- Behalten in jedem Rover: `rel_heading` (direkt aus NAV-RELPOSNED), `delta_heading` (einfache Differenz über letzte 2 Werte).
+- CSV-Schema unverändert: alle ehemaligen Berechnungs-Spalten bleiben im Header, Werte sind 0 statt berechnet. Rückwärtskompatibel für Excel-Auswertungen.
+
+**Erwartung:** Producer-Threads sind ca. 5-10× weniger CPU-intensiv pro Message. GIL-Last drastisch reduziert. 100ms-Quote sollte deutlich steigen.
+
+**Test offen:** Hof-Bench-Test auf `refactor/lean-producer`. Drop-Debug-Output zeigt ob "alle 3 Rover gleichzeitig fehlen"-Pattern verschwindet.
+
+**Risiko:** sehr gering. Wenn keine Verbesserung, einfach zurück auf refactor/logger-itow-dict. Geometrie/Mess-Pipeline (Var A/B, Tare) unverändert.
+
+---
+
 ## 2026-05-31 — Rollback: SAMPLE_MAX_AGE_MS 500 → 300
 
 **Befund vom Hof-Test 14:00:** Mit MAX=500 lieferte die CSV durchgängig 200ms-Steps (= 5 Hz effektiv), während die Module per pyubx2-Hz-Test sauber 10 Hz produzieren. Vormittag-Stand (MAX=300) hatte 60.8% bei 100ms erreicht — deutlich besser.
