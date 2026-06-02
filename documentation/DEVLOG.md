@@ -4,6 +4,25 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-02 — Frontend-Polling 1000ms → 100ms (validiert, in v1.0-dlg)
+
+**Befund 02.06. abends, 4-Run-Hof-Test mit Desktop deaktiviert:**
+- Pi-OS-Desktop deaktiviert (raspi-config Console Autologin) — `ps aux` zeigt keine Xorg/Wayland mehr, RAM 305 MB used von 7.9 GB
+- 4 aufeinanderfolgende 30s-Messungen:
+  - Reboot 1 → 118 ms iTOW-Mittel (8.5 Hz)
+  - Server-Restart → 158 ms (6.3 Hz)
+  - Reboot 2 → 150 ms (6.7 Hz)
+  - Server-Restart → 138 ms (7.2 Hz)
+- **Akkumulations-Bug ist deutlich abgeschwächt!** Run 4 (Restart) ist sogar besser als Run 3 (nach Reboot). Desktop-Deaktivierung war der relevante Hebel.
+
+**Change:** `setInterval(fetchData, 1000)` → `setInterval(fetchData, 100)` in server.py.
+
+**Warum 100ms statt 1000ms:** Über mehrere Tests am 01./02.06. zeigte sich: 100ms-Polling ergibt bessere CSV-Quote als 1000ms (paradox). Hypothese: bei 100ms ist der Polling-Rhythmus exakt synchron zur 10Hz-Sample-Rate — Flask-Calls fallen in Sample-Lücken, blockieren Producer-Threads weniger. Bei 1000ms passieren die Calls zu sporadisch und treffen oft auf Sample-Ankunft.
+
+**Tag v1.0-dlg force-moved** auf neuen HEAD nach diesem Commit. archive/pre-dlg-2026-06-01 bleibt unverändert als Sicherung.
+
+---
+
 ## 2026-06-01 abends — DLG-Lock: /tmp-Cleanup + USB-Reset-Skript
 
 **Befund Akkumulations-Bug (klar bestätigt):**
