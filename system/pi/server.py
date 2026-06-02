@@ -339,7 +339,13 @@ HTML_PAGE = '''
                   title="Pi komplett neustarten (~60s)"
                   style="background:#c0392b;color:white;padding:6px 12px;border:none;
                          border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px;">
-            🔄 Pi neustarten
+            Reboot
+          </button>
+          <button type="button" onclick="systemRefresh()"
+                  title="Service + USB-Reset (~15s, schneller als Reboot)"
+                  style="background:#e67e22;color:white;padding:6px 12px;border:none;
+                         border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px;">
+            Refresh
           </button>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
@@ -706,6 +712,16 @@ HTML_PAGE = '''
           .catch(e => alert("Fehler beim Neustart-Aufruf: " + e));
       }
 
+      function systemRefresh() {
+        if (!confirm("Refresh ausfuehren?\n\nServer wird gestoppt, USB der F9P resetet, Service startet neu.\nDauert ~15 Sekunden. Laufende Messung wird gestoppt.")) return;
+        fetch('/system_refresh', {method: 'POST'})
+          .then(r => r.json())
+          .then(d => {
+            alert("Refresh laeuft.\n\nIn ~15s Seite neu laden (F5).");
+          })
+          .catch(e => alert("Fehler beim Refresh-Aufruf: " + e));
+      }
+
       function exportAndRedirect() {
         const a = document.createElement('a');
         a.href = "{{ url_for('export_csv') }}";
@@ -899,12 +915,11 @@ def export_csv():
 def system_restart():
     """Pi neu starten via sudo reboot.
 
-    Voraussetzung: /etc/sudoers.d/motionpsm-reboot existiert
-    und erlaubt dem Service-User NOPASSWD: /sbin/reboot.
-    Setup einmalig per: sudo bash tools/setup_sudoers_reboot.sh
+    Voraussetzung: /etc/sudoers.d/motionpsm existiert und erlaubt
+    dem Service-User NOPASSWD: /sbin/reboot.
+    Setup einmalig per: sudo bash tools/setup_sudoers.sh
     """
     try:
-        # Falls eine Messung laeuft, vorher sauber stoppen
         if state.running:
             try:
                 gps.stop_measurement()
@@ -913,12 +928,45 @@ def system_restart():
             state.running = False
             state.start_time = None
 
-        # subprocess.Popen detached, damit Flask die Response noch zurueck
-        # gibt bevor der Pi runter geht (~1 s Vorlauf).
         subprocess.Popen(['sudo', '-n', '/sbin/reboot'])
         return jsonify({
             "status": "ok",
             "message": "Pi startet neu. UI in ~60s wieder verfuegbar."
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/system_refresh', methods=['POST'])
+def system_refresh():
+    """Service stoppen, F9P USB resetten, Service starten.
+
+    Schneller Alternative zum Pi-Reboot (~15 s statt ~60 s).
+    Verwendet tools/motionpsm_refresh.sh als Helper, da der Server
+    sich selbst nicht killen kann.
+
+    Voraussetzung: /etc/sudoers.d/motionpsm existiert und erlaubt
+    dem Service-User NOPASSWD fuer motionpsm_refresh.sh.
+    Setup einmalig per: sudo bash tools/setup_sudoers.sh
+    """
+    try:
+        if state.running:
+            try:
+                gps.stop_measurement()
+            except Exception as e:
+                print(f"[Refresh] stop_measurement Fehler (ignoriert): {e}")
+            state.running = False
+            state.start_time = None
+
+        # Absoluter Pfad zum Helper-Skript - sudoers erwartet exakt diesen Pfad
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "..", "..", "tools", "motionpsm_refresh.sh")
+        script_path = os.path.abspath(script_path)
+
+        subprocess.Popen(['sudo', '-n', '/bin/bash', script_path])
+        return jsonify({
+            "status": "ok",
+            "message": "Refresh laeuft. UI in ~15s wieder verfuegbar."
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

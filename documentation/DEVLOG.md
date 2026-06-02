@@ -4,27 +4,44 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
-## 2026-06-02 abends — UI-Button "Pi neustarten" (Branch feature/ui-system-restart)
+## 2026-06-02 abends — UI-Buttons "Reboot" + "Refresh" (Branch feature/ui-system-restart)
 
-**Ziel:** Für DLG einen schnellen Pi-Reboot direkt aus der UI ermöglichen, ohne SSH-Verbindung am Stand zu brauchen. Hintergrund: Falk steuert via Tablet, SSH-Schritte sind im Stress nicht praktikabel.
+**Ziel:** Für DLG zwei UI-Buttons im Brand-Header, mit denen Falk vom Tablet aus den Pi neu starten ODER nur den Service+USB-Reset auslösen kann — ohne SSH am Stand.
 
 **Branch:** `feature/ui-system-restart` (von main da3cda1)
 
-**Aenderungen:**
-1. `server.py` — neuer Endpoint `POST /system_restart`:
+**Aenderungen `server.py`:**
+1. Neuer Endpoint `POST /system_restart`:
    - Stoppt laufende Messung sauber
    - `subprocess.Popen(['sudo', '-n', '/sbin/reboot'])` (detached)
-   - Gibt JSON zurueck bevor Pi runter geht
-2. `server.py` HTML — roter Button "🔄 Pi neustarten" im Brand-Header rechts neben "Real Time Monitor"
-3. `server.py` JS — `systemRestart()` mit `window.confirm()` Dialog + Alert dass Pi neu startet
-4. NEU: `tools/setup_sudoers_reboot.sh` — schreibt `/etc/sudoers.d/motionpsm-reboot` mit NOPASSWD-Eintrag fuer reboot. Einmalig per `sudo bash tools/setup_sudoers_reboot.sh`
+2. Neuer Endpoint `POST /system_refresh`:
+   - Stoppt laufende Messung sauber
+   - `subprocess.Popen(['sudo', '-n', '/bin/bash', tools/motionpsm_refresh.sh])` (detached)
+3. HTML im Brand-Header: roter Button **Reboot** + oranger Button **Refresh** rechts neben "Real Time Monitor"
+4. JS `systemRestart()` und `systemRefresh()` mit `window.confirm()` Dialog + Alert
 
-**Sicherheit:** Der sudoers-Eintrag erlaubt EXAKT `/sbin/reboot`, kein anderes Kommando. Skript prueft sich selbst mit `visudo -c` vor Installation.
+**Neue Helper-Skripte:**
+- `tools/motionpsm_refresh.sh` — laeuft als root via sudo:
+  1. `sleep 1.5` (Flask-Response zurueck zum Client)
+  2. `systemctl stop motionpsm.service` (toetet server.py)
+  3. `tools/usb_reset_f9p.sh` (USB-unbind+bind)
+  4. `systemctl start motionpsm.service` (Server kommt zurueck)
+  Loggt nach `/tmp/motionpsm_refresh.log`
+- `tools/setup_sudoers.sh` — schreibt `/etc/sudoers.d/motionpsm`:
+  ```
+  $USER ALL=(ALL) NOPASSWD: /sbin/reboot, /bin/bash <repo>/tools/motionpsm_refresh.sh
+  ```
+  Selbst-Pruefung via `visudo -c` VOR Installation (kein lockout-Risiko).
 
-**Test-Plan (vor merge nach main):**
-1. Falk pullt Branch + flasht UI im Browser
-2. `sudo bash tools/setup_sudoers_reboot.sh` einmal ausfuehren
-3. Button klicken → Confirm → Erwartung: Pi rebootet, Autostart bringt Server zurueck in ~60s
+**Sicherheit:** sudoers erlaubt EXAKT `/sbin/reboot` und den vollen Pfad zu `motionpsm_refresh.sh`. Wenn jemand das Skript modifiziert um beliebigen Code auszufuehren — der User hat eh die Rechte das Skript zu modifizieren, also kein Privilegien-Eskalation.
+
+**Test-Plan (auf Branch, vor merge nach main):**
+1. `git pull && git checkout feature/ui-system-restart`
+2. `sudo bash tools/setup_sudoers.sh` (einmalig)
+3. `sudo -n /sbin/reboot --help` → muss ohne Passwort gehen
+4. UI im Browser - beide Buttons sichtbar
+5. **Refresh** klicken → ~15 s warten → F5 → UI wieder da, gleiche Pi-Session
+6. **Reboot** klicken → ~60 s warten → F5 → UI wieder da, neue Pi-Session
 
 **Bei Erfolg:** merge `feature/ui-system-restart` → `main`, Tag v1.0-dlg force-move.
 
