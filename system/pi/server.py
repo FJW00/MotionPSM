@@ -63,7 +63,7 @@ HTML_PAGE = '''
         gap: 14px;
       }
       .brand-logo {
-        height: 56px;
+        height: 90px;
         width: auto;
       }
       .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
@@ -100,19 +100,27 @@ HTML_PAGE = '''
         gap: 10px;
       }
       .sys-btn {
-        color: white;
-        padding: 6px 14px;
-        border: none;
-        border-radius: 4px;
+        padding: 5px 12px;
+        border: 1px solid;
+        border-radius: 5px;
         cursor: pointer;
-        font-weight: 600;
-        font-size: 13px;
+        font-weight: 500;
+        font-size: 12px;
         font-family: inherit;
+        transition: background-color 0.15s;
       }
-      .sys-btn-reboot { background: #c0392b; }
-      .sys-btn-reboot:hover { background: #a93226; }
-      .sys-btn-refresh { background: #e67e22; }
-      .sys-btn-refresh:hover { background: #cf6d17; }
+      .sys-btn-reboot {
+        background: #fadbd8;
+        color: #922b21;
+        border-color: #e6a8a3;
+      }
+      .sys-btn-reboot:hover { background: #f5b7b1; }
+      .sys-btn-refresh {
+        background: #fdebd0;
+        color: #a04000;
+        border-color: #f5cba7;
+      }
+      .sys-btn-refresh:hover { background: #fad7a0; }
       .data-mode-toggle {
         display: inline-flex;
         background: #eee;
@@ -344,7 +352,7 @@ HTML_PAGE = '''
       /* ---------- Mobile ---------- */
       @media (max-width: 800px) {
         .brand-header { flex-direction: column; align-items: flex-start; }
-        .brand-logo { height: 44px; }
+        .brand-logo { height: 60px; }
         .brand-name { font-size: 22px; }
         .brand-right { font-size: 22px; }
         .boom-header h2 { font-size: 18px; }
@@ -358,11 +366,7 @@ HTML_PAGE = '''
     <!-- Brand Header: Logo + FJW Systems links, Real Time Monitor rechts -->
     <div class="brand-header">
       <div class="brand-left">
-        <img src="{{ url_for('static', filename='logo_brand.svg') }}" alt="FJW Logo" class="brand-logo">
-        <div class="brand-text">
-          <div class="brand-name">FJW Systems</div>
-          <div class="brand-tagline">MotionPSM</div>
-        </div>
+        <img src="{{ url_for('static', filename='logo_brand.svg') }}" alt="FJW Systems Logo" class="brand-logo">
       </div>
       <div class="brand-right-block">
         <div class="brand-right">MotionPSM</div>
