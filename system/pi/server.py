@@ -63,8 +63,9 @@ HTML_PAGE = '''
         gap: 14px;
       }
       .brand-logo {
-        height: 90px;
+        height: 120px;
         width: auto;
+        margin-left: -22px;
       }
       .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
       .brand-name { font-size: 28px; font-weight: 700; color: var(--col-brand); letter-spacing: 0.2px; }
@@ -100,8 +101,8 @@ HTML_PAGE = '''
         gap: 10px;
       }
       .sys-btn {
-        padding: 5px 12px;
-        border: 1px solid;
+        padding: 5px 14px;
+        border: none;
         border-radius: 5px;
         cursor: pointer;
         font-weight: 500;
@@ -109,17 +110,9 @@ HTML_PAGE = '''
         font-family: inherit;
         transition: background-color 0.15s;
       }
-      .sys-btn-reboot {
-        background: #fadbd8;
-        color: #922b21;
-        border-color: #e6a8a3;
-      }
+      .sys-btn-reboot { background: #fadbd8; color: #922b21; }
       .sys-btn-reboot:hover { background: #f5b7b1; }
-      .sys-btn-refresh {
-        background: #fdebd0;
-        color: #a04000;
-        border-color: #f5cba7;
-      }
+      .sys-btn-refresh { background: #fdebd0; color: #a04000; }
       .sys-btn-refresh:hover { background: #fad7a0; }
       .data-mode-toggle {
         display: inline-flex;
@@ -352,7 +345,7 @@ HTML_PAGE = '''
       /* ---------- Mobile ---------- */
       @media (max-width: 800px) {
         .brand-header { flex-direction: column; align-items: flex-start; }
-        .brand-logo { height: 60px; }
+        .brand-logo { height: 80px; margin-left: -14px; }
         .brand-name { font-size: 22px; }
         .brand-right { font-size: 22px; }
         .boom-header h2 { font-size: 18px; }
