@@ -54,8 +54,8 @@ HTML_PAGE = '''
         justify-content: space-between;
         gap: 14px;
         max-width: 1100px;
-        margin: 0 auto 4px;
-        padding: 4px 0;
+        margin: 0 auto 0;
+        padding: 0;
       }
       .brand-left {
         display: flex;
@@ -90,7 +90,7 @@ HTML_PAGE = '''
         align-items: center;
         gap: 14px;
         max-width: 1100px;
-        margin: -8px auto 12px;
+        margin: -24px auto 8px;
         padding: 0 0 8px;
         border-bottom: 1px solid #eee;
         flex-wrap: wrap;
