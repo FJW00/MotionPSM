@@ -703,21 +703,21 @@ HTML_PAGE = '''
       {% endif %}
 
       function systemRestart() {
-        if (!confirm("Pi wirklich neustarten?\n\nDie UI ist ~60s nicht erreichbar.\nDie laufende Messung wird gestoppt.")) return;
+        if (!confirm("Pi wirklich neustarten?\\n\\nDie UI ist ~60s nicht erreichbar.\\nDie laufende Messung wird gestoppt.")) return;
         fetch('/system_restart', {method: 'POST'})
           .then(r => r.json())
           .then(d => {
-            alert("Pi startet neu.\n\nIn ~60s Seite neu laden (F5).\nDer Server kommt durch den Autostart automatisch zurueck.");
+            alert("Pi startet neu.\\n\\nIn ~60s Seite neu laden (F5).\\nDer Server kommt durch den Autostart automatisch zurueck.");
           })
           .catch(e => alert("Fehler beim Neustart-Aufruf: " + e));
       }
 
       function systemRefresh() {
-        if (!confirm("Refresh ausfuehren?\n\nServer wird gestoppt, USB der F9P resetet, Service startet neu.\nDauert ~15 Sekunden. Laufende Messung wird gestoppt.")) return;
+        if (!confirm("Refresh ausfuehren?\\n\\nServer wird gestoppt, USB der F9P resetet, Service startet neu.\\nDauert ~15 Sekunden. Laufende Messung wird gestoppt.")) return;
         fetch('/system_refresh', {method: 'POST'})
           .then(r => r.json())
           .then(d => {
-            alert("Refresh laeuft.\n\nIn ~15s Seite neu laden (F5).");
+            alert("Refresh laeuft.\\n\\nIn ~15s Seite neu laden (F5).");
           })
           .catch(e => alert("Fehler beim Refresh-Aufruf: " + e));
       }
