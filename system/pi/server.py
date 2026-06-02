@@ -4,6 +4,7 @@ import gps_measurement as gps
 import threading
 import os
 import glob
+import subprocess
 
 # static_folder='static' ist Default — Flask serviert system/pi/static/ unter /static/
 app = Flask(__name__)
@@ -332,7 +333,15 @@ HTML_PAGE = '''
         </div>
       </div>
       <div class="brand-right-block">
-        <div class="brand-right">Real Time Monitor</div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="brand-right">Real Time Monitor</div>
+          <button type="button" onclick="systemRestart()"
+                  title="Pi komplett neustarten (~60s)"
+                  style="background:#c0392b;color:white;padding:6px 12px;border:none;
+                         border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px;">
+            🔄 Pi neustarten
+          </button>
+        </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <div class="tare-controls">
             <button type="button" class="tare-btn" id="tare_btn" title="Save current values as zero reference">⌖ Set Zero</button>
@@ -687,6 +696,16 @@ HTML_PAGE = '''
       setInterval(fetchData, 100);
       {% endif %}
 
+      function systemRestart() {
+        if (!confirm("Pi wirklich neustarten?\n\nDie UI ist ~60s nicht erreichbar.\nDie laufende Messung wird gestoppt.")) return;
+        fetch('/system_restart', {method: 'POST'})
+          .then(r => r.json())
+          .then(d => {
+            alert("Pi startet neu.\n\nIn ~60s Seite neu laden (F5).\nDer Server kommt durch den Autostart automatisch zurueck.");
+          })
+          .catch(e => alert("Fehler beim Neustart-Aufruf: " + e));
+      }
+
       function exportAndRedirect() {
         const a = document.createElement('a');
         a.href = "{{ url_for('export_csv') }}";
@@ -874,6 +893,35 @@ def export_csv():
         return response
 
     return send_file(path, as_attachment=True, download_name=filename, mimetype="text/csv")
+
+
+@app.route('/system_restart', methods=['POST'])
+def system_restart():
+    """Pi neu starten via sudo reboot.
+
+    Voraussetzung: /etc/sudoers.d/motionpsm-reboot existiert
+    und erlaubt dem Service-User NOPASSWD: /sbin/reboot.
+    Setup einmalig per: sudo bash tools/setup_sudoers_reboot.sh
+    """
+    try:
+        # Falls eine Messung laeuft, vorher sauber stoppen
+        if state.running:
+            try:
+                gps.stop_measurement()
+            except Exception as e:
+                print(f"[Reboot] stop_measurement Fehler (ignoriert): {e}")
+            state.running = False
+            state.start_time = None
+
+        # subprocess.Popen detached, damit Flask die Response noch zurueck
+        # gibt bevor der Pi runter geht (~1 s Vorlauf).
+        subprocess.Popen(['sudo', '-n', '/sbin/reboot'])
+        return jsonify({
+            "status": "ok",
+            "message": "Pi startet neu. UI in ~60s wieder verfuegbar."
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == '__main__':

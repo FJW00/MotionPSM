@@ -4,6 +4,32 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-02 abends — UI-Button "Pi neustarten" (Branch feature/ui-system-restart)
+
+**Ziel:** Für DLG einen schnellen Pi-Reboot direkt aus der UI ermöglichen, ohne SSH-Verbindung am Stand zu brauchen. Hintergrund: Falk steuert via Tablet, SSH-Schritte sind im Stress nicht praktikabel.
+
+**Branch:** `feature/ui-system-restart` (von main da3cda1)
+
+**Aenderungen:**
+1. `server.py` — neuer Endpoint `POST /system_restart`:
+   - Stoppt laufende Messung sauber
+   - `subprocess.Popen(['sudo', '-n', '/sbin/reboot'])` (detached)
+   - Gibt JSON zurueck bevor Pi runter geht
+2. `server.py` HTML — roter Button "🔄 Pi neustarten" im Brand-Header rechts neben "Real Time Monitor"
+3. `server.py` JS — `systemRestart()` mit `window.confirm()` Dialog + Alert dass Pi neu startet
+4. NEU: `tools/setup_sudoers_reboot.sh` — schreibt `/etc/sudoers.d/motionpsm-reboot` mit NOPASSWD-Eintrag fuer reboot. Einmalig per `sudo bash tools/setup_sudoers_reboot.sh`
+
+**Sicherheit:** Der sudoers-Eintrag erlaubt EXAKT `/sbin/reboot`, kein anderes Kommando. Skript prueft sich selbst mit `visudo -c` vor Installation.
+
+**Test-Plan (vor merge nach main):**
+1. Falk pullt Branch + flasht UI im Browser
+2. `sudo bash tools/setup_sudoers_reboot.sh` einmal ausfuehren
+3. Button klicken → Confirm → Erwartung: Pi rebootet, Autostart bringt Server zurueck in ~60s
+
+**Bei Erfolg:** merge `feature/ui-system-restart` → `main`, Tag v1.0-dlg force-move.
+
+---
+
 ## 2026-06-02 — Frontend-Polling 1000ms → 100ms (validiert, in v1.0-dlg)
 
 **Befund 02.06. abends, 4-Run-Hof-Test mit Desktop deaktiviert:**
