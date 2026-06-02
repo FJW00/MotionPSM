@@ -70,12 +70,12 @@ reset_one_port() {
     fi
 
     # USB-Device-ID aus udevadm attribute-walk extrahieren.
-    # Eintrag wie: KERNEL=="1-1.2"
+    # Eintrag wie: KERNELS=="1-1" (Parent-USB-Device, mit S am Ende)
     local usb_id
     usb_id="$(udevadm info --attribute-walk -n "$tty_dev" 2>/dev/null \
-        | grep -oE 'KERNEL=="[0-9]+-[0-9.]+"' \
+        | grep -oE 'KERNELS=="[0-9]+-[0-9.]+"' \
         | head -1 \
-        | sed 's/KERNEL=="\(.*\)"/\1/')"
+        | sed 's/KERNELS=="\(.*\)"/\1/')"
 
     if [ -z "$usb_id" ]; then
         echo "  ! $name ($tty_dev): USB-Bus-ID nicht ermittelbar"
