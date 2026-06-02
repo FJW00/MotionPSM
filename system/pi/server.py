@@ -119,13 +119,13 @@ HTML_PAGE = '''
         justify-content: center;
         gap: 10px;
       }
-      .meas-status {
+      .brand-status {
         font-size: 13px;
         font-weight: 600;
         letter-spacing: 0.3px;
       }
-      .meas-status.running { color: #2e7d32; }
-      .meas-status.stopped { color: #d32f2f; }
+      .brand-status.running { color: #2e7d32; }
+      .brand-status.stopped { color: #d32f2f; }
       .meas-btn {
         background: transparent;
         border: 1px solid #ccc;
@@ -394,6 +394,9 @@ HTML_PAGE = '''
       <div class="brand-left">
         <img src="{{ url_for('static', filename='fjw_systems_aufkleber.svg') }}" alt="FJW Systems Logo" class="brand-logo">
       </div>
+      <div class="brand-status {% if running %}running{% else %}stopped{% endif %}">
+        {% if running %}Running <span id="runtime">0</span> s{% else %}Stopped{% endif %}
+      </div>
       <div class="brand-right-block">
         <div class="brand-right">MotionPSM</div>
       </div>
@@ -411,11 +414,9 @@ HTML_PAGE = '''
       </div>
       <div class="action-bar-group action-bar-center">
         {% if running %}
-          <span class="meas-status running">Running <span id="runtime">0</span> s</span>
           <button type="button" onclick="exportAndRedirect()" class="meas-btn">Export CSV</button>
           <a href="{{ url_for('stop') }}" class="meas-btn-link"><button type="button" class="meas-btn">Stop</button></a>
         {% else %}
-          <span class="meas-status stopped">Stopped</span>
           <a href="{{ url_for('start') }}" class="meas-btn-link"><button type="button" class="meas-btn meas-btn-primary">Start Measurement</button></a>
         {% endif %}
       </div>
