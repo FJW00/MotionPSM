@@ -27,7 +27,7 @@ SyslogIdentifier=motionpsm
 
 # Sicherheit (Pi-typisch konservativ)
 PrivateTmp=false
-NoNewPrivileges=true
+NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target
