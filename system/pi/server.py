@@ -54,7 +54,7 @@ HTML_PAGE = '''
         justify-content: space-between;
         gap: 14px;
         max-width: 1100px;
-        margin: 0 auto 20px;
+        margin: 0 auto 4px;
         padding: 4px 0;
       }
       .brand-left {
@@ -90,7 +90,7 @@ HTML_PAGE = '''
         align-items: center;
         gap: 14px;
         max-width: 1100px;
-        margin: 0 auto 16px;
+        margin: -8px auto 12px;
         padding: 0 0 8px;
         border-bottom: 1px solid #eee;
         flex-wrap: wrap;
@@ -359,7 +359,7 @@ HTML_PAGE = '''
     <!-- Brand Header: Logo + FJW Systems links, Real Time Monitor rechts -->
     <div class="brand-header">
       <div class="brand-left">
-        <img src="{{ url_for('static', filename='logo_brand.svg') }}" alt="FJW Systems Logo" class="brand-logo">
+        <img src="{{ url_for('static', filename='fjw_systems_aufkleber.svg') }}" alt="FJW Systems Logo" class="brand-logo">
       </div>
       <div class="brand-right-block">
         <div class="brand-right">MotionPSM</div>
