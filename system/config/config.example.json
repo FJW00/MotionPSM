@@ -9,6 +9,6 @@
   "ROVER2_COM_PORT": "/dev/serial/by-id/usb-R_2-if00",
   "ROVER3_COM_PORT": "/dev/serial/by-id/usb-R_3-if00",
   "LIVE_PLOT": true,
-  "_comment_filter": "FILTER_WINDOW_S = Tiefpass-Fensterbreite in Sekunden fuer R1/R2 longitudinal. Default 0.2 = 2 Samples bei 10 Hz Sample-Rate. Hoehere Werte = ruhigere Anzeige, mehr Verzoegerung.",
-  "FILTER_WINDOW_S": 0.2
+  "_comment_filter": "FILTER_WINDOW_S = Tiefpass-Fensterbreite in Sekunden fuer R1/R2 longitudinal. Default 0.5 = 5 Samples bei 10 Hz Sample-Rate. Hoehere Werte = ruhigere Anzeige, mehr Verzoegerung.",
+  "FILTER_WINDOW_S": 0.5
 }

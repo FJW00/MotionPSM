@@ -81,6 +81,38 @@ HTML_PAGE = '''
         align-items: flex-end;
         gap: 6px;
       }
+
+      /* Action-Bar: 4 Buttons in einer Zeile unter dem Header */
+      .action-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        max-width: 1100px;
+        margin: 0 auto 16px;
+        padding: 0 0 8px;
+        border-bottom: 1px solid #eee;
+        flex-wrap: wrap;
+      }
+      .action-bar-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sys-btn {
+        color: white;
+        padding: 6px 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .sys-btn-reboot { background: #c0392b; }
+      .sys-btn-reboot:hover { background: #a93226; }
+      .sys-btn-refresh { background: #e67e22; }
+      .sys-btn-refresh:hover { background: #cf6d17; }
       .data-mode-toggle {
         display: inline-flex;
         background: #eee;
@@ -326,40 +358,38 @@ HTML_PAGE = '''
     <!-- Brand Header: Logo + FJW Systems links, Real Time Monitor rechts -->
     <div class="brand-header">
       <div class="brand-left">
-        <img src="{{ url_for('static', filename='logo_fjw.png') }}" alt="FJW Logo" class="brand-logo">
+        <img src="{{ url_for('static', filename='logo_brand.svg') }}" alt="FJW Logo" class="brand-logo">
         <div class="brand-text">
           <div class="brand-name">FJW Systems</div>
           <div class="brand-tagline">MotionPSM</div>
         </div>
       </div>
       <div class="brand-right-block">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="brand-right">Real Time Monitor</div>
-          <button type="button" onclick="systemRestart()"
-                  title="Pi komplett neustarten (~60s)"
-                  style="background:#c0392b;color:white;padding:6px 12px;border:none;
-                         border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px;">
-            Reboot
-          </button>
-          <button type="button" onclick="systemRefresh()"
-                  title="Service + USB-Reset (~15s, schneller als Reboot)"
-                  style="background:#e67e22;color:white;padding:6px 12px;border:none;
-                         border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px;">
-            Refresh
-          </button>
+        <div class="brand-right">MotionPSM</div>
+      </div>
+    </div>
+
+    <!-- Action-Bar: 4 Buttons in einer Zeile, links System-Steuerung, rechts Mess-UI -->
+    <div class="action-bar">
+      <div class="action-bar-group">
+        <button type="button" onclick="systemRestart()"
+                title="Pi komplett neustarten (~60s)"
+                class="sys-btn sys-btn-reboot">Reboot</button>
+        <button type="button" onclick="systemRefresh()"
+                title="Service + USB-Reset (~15s, schneller als Reboot)"
+                class="sys-btn sys-btn-refresh">Refresh</button>
+      </div>
+      <div class="action-bar-group">
+        <div class="tare-controls">
+          <button type="button" class="tare-btn" id="tare_btn" title="Save current values as zero reference">⌖ Set Zero</button>
+          <span class="tare-status" id="tare_status">
+            <span>Tared <span id="tare_time">--:--:--</span></span>
+            <button type="button" class="tare-clear" id="tare_clear" title="Clear tare">×</button>
+          </span>
         </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="tare-controls">
-            <button type="button" class="tare-btn" id="tare_btn" title="Save current values as zero reference">⌖ Set Zero</button>
-            <span class="tare-status" id="tare_status">
-              <span>Tared <span id="tare_time">--:--:--</span></span>
-              <button type="button" class="tare-clear" id="tare_clear" title="Clear tare">×</button>
-            </span>
-          </div>
-          <div class="data-mode-toggle" id="data_mode_toggle">
-            <button type="button" data-mode="filtered" class="active">Smoothed</button>
-            <button type="button" data-mode="raw">Raw</button>
-          </div>
+        <div class="data-mode-toggle" id="data_mode_toggle">
+          <button type="button" data-mode="filtered" class="active">Smoothed</button>
+          <button type="button" data-mode="raw">Raw</button>
         </div>
       </div>
     </div>

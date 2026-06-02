@@ -4,6 +4,19 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-02 spaet abends — UI-Politur (Branch feature/ui-system-restart)
+
+Iteration auf dem Reboot/Refresh-Branch nach Falks Feedback:
+
+1. **Filter-Default 0.2 → 0.5 s** (Moving-Average 5 Samples statt 2). Setzt sich in `gps_measurement.py` Default UND `config.example.json`. Falks lokales `config.json` muss zusaetzlich aktualisiert werden. Hintergrund: RTK-Rauschen so klein, dass Smoothed/Raw kaum unterscheidbar war — mit 500 ms-Fenster sichtbarere Glaettung.
+2. **Header-Text:** "Real Time Monitor" → "MotionPSM" (oben rechts).
+3. **Layout-Restructure:** alle 4 Buttons in eine eigene `action-bar`-Zeile UNTER dem Brand-Header. Reboot/Refresh links, Set Zero + Smoothed/Raw rechts (`justify-content: space-between`). Brand-Header bleibt zweizeilig (Logo + Name).
+4. **Logo:** `logo_fjw.png` → `logo_brand.svg`. Das offizielle Firmenlogo aus `business/website/assets/` ist jetzt im Repo unter `system/pi/static/logo_brand.svg`. SVG skaliert sauber bei Tablet-Zoom.
+
+Neue CSS-Klassen: `.action-bar`, `.action-bar-group`, `.sys-btn`, `.sys-btn-reboot`, `.sys-btn-refresh`. Hover-States fuer Reboot/Refresh.
+
+---
+
 ## 2026-06-02 abends — UI-Buttons "Reboot" + "Refresh" (Branch feature/ui-system-restart)
 
 **Ziel:** Für DLG zwei UI-Buttons im Brand-Header, mit denen Falk vom Tablet aus den Pi neu starten ODER nur den Service+USB-Reset auslösen kann — ohne SSH am Stand.
