@@ -49,14 +49,17 @@ HTML_PAGE = '''
 
       /* ---------- Brand Header (Logo + FJW Systems links, Real Time Monitor rechts) ---------- */
       .brand-header {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        justify-content: space-between;
         gap: 14px;
         max-width: 1100px;
         margin: 0 auto 0;
         padding: 0;
       }
+      .brand-header > .brand-left { justify-self: start; }
+      .brand-header > .brand-status { justify-self: center; }
+      .brand-header > .brand-right-block { justify-self: end; }
       .brand-left {
         display: flex;
         align-items: center;
@@ -85,16 +88,18 @@ HTML_PAGE = '''
 
       /* Action-Bar: 4 Buttons in einer Zeile unter dem Header */
       .action-bar {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
         gap: 14px;
         max-width: 1100px;
         margin: -24px auto 8px;
         padding: 0 0 8px;
         border-bottom: 1px solid #eee;
-        flex-wrap: wrap;
       }
+      .action-bar > .action-bar-group:first-child { justify-self: start; }
+      .action-bar > .action-bar-center { justify-self: center; }
+      .action-bar > .action-bar-group:last-child { justify-self: end; }
       .action-bar-group {
         display: flex;
         align-items: center;
@@ -115,8 +120,6 @@ HTML_PAGE = '''
       .sys-btn-refresh { background: #fdebd0; color: #a04000; }
       .sys-btn-refresh:hover { background: #fad7a0; }
       .action-bar-center {
-        flex: 1;
-        justify-content: center;
         gap: 10px;
       }
       .brand-status {
