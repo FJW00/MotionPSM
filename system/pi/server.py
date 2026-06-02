@@ -71,7 +71,7 @@ HTML_PAGE = '''
       .brand-name { font-size: 28px; font-weight: 700; color: var(--col-brand); letter-spacing: 0.2px; }
       .brand-tagline { font-size: 12px; color: #888; font-weight: 400; margin-top: 3px; letter-spacing: 0.4px; text-transform: uppercase; }
       .brand-right {
-        font-size: 28px;
+        font-size: 40px;
         font-weight: 700;
         color: var(--col-brand);
         letter-spacing: 0.2px;
@@ -116,24 +116,32 @@ HTML_PAGE = '''
       .sys-btn-refresh:hover { background: #fad7a0; }
       .action-bar-center {
         flex: 1;
+        flex-direction: column;
         justify-content: center;
+        align-items: center;
+        gap: 4px;
+      }
+      .meas-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
       }
       .meas-status {
-        font-size: 12px;
-        font-weight: 500;
-        margin-right: 4px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
       }
       .meas-status.running { color: #2e7d32; }
       .meas-status.stopped { color: #d32f2f; }
       .meas-btn {
         background: transparent;
         border: 1px solid #ccc;
-        border-radius: 5px;
-        padding: 5px 14px;
+        border-radius: 6px;
+        padding: 7px 20px;
         font-family: inherit;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 500;
-        color: #444;
+        color: #333;
         cursor: pointer;
         transition: background-color 0.15s, border-color 0.15s;
       }
@@ -379,7 +387,7 @@ HTML_PAGE = '''
         .brand-header { flex-direction: column; align-items: flex-start; }
         .brand-logo { height: 80px; margin-left: -25px; }
         .brand-name { font-size: 22px; }
-        .brand-right { font-size: 22px; }
+        .brand-right { font-size: 30px; }
         .boom-header h2 { font-size: 18px; }
         .boom-values { grid-template-columns: 1fr; }
         .secondary-grid { grid-template-columns: 1fr; }
@@ -410,12 +418,16 @@ HTML_PAGE = '''
       </div>
       <div class="action-bar-group action-bar-center">
         {% if running %}
-          <span class="meas-status running">Running <span id="runtime">0</span> s</span>
-          <button type="button" onclick="exportAndRedirect()" class="meas-btn">Export CSV</button>
-          <a href="{{ url_for('stop') }}" class="meas-btn-link"><button type="button" class="meas-btn">Stop</button></a>
+          <div class="meas-status running">Running <span id="runtime">0</span> s</div>
+          <div class="meas-controls">
+            <button type="button" onclick="exportAndRedirect()" class="meas-btn">Export CSV</button>
+            <a href="{{ url_for('stop') }}" class="meas-btn-link"><button type="button" class="meas-btn">Stop</button></a>
+          </div>
         {% else %}
-          <span class="meas-status stopped">Stopped</span>
-          <a href="{{ url_for('start') }}" class="meas-btn-link"><button type="button" class="meas-btn meas-btn-primary">Start Measurement</button></a>
+          <div class="meas-status stopped">Stopped</div>
+          <div class="meas-controls">
+            <a href="{{ url_for('start') }}" class="meas-btn-link"><button type="button" class="meas-btn meas-btn-primary">Start Measurement</button></a>
+          </div>
         {% endif %}
       </div>
       <div class="action-bar-group">
