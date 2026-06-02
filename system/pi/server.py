@@ -928,7 +928,7 @@ def system_restart():
             state.running = False
             state.start_time = None
 
-        subprocess.Popen(['sudo', '-n', '/sbin/reboot'])
+        subprocess.Popen(['sudo', '-n', '/sbin/reboot'], start_new_session=True)
         return jsonify({
             "status": "ok",
             "message": "Pi startet neu. UI in ~60s wieder verfuegbar."
@@ -963,7 +963,7 @@ def system_refresh():
                                    "..", "..", "tools", "motionpsm_refresh.sh")
         script_path = os.path.abspath(script_path)
 
-        subprocess.Popen(['sudo', '-n', '/bin/bash', script_path])
+        subprocess.Popen(['sudo', '-n', '/bin/bash', script_path], start_new_session=True)
         return jsonify({
             "status": "ok",
             "message": "Refresh laeuft. UI in ~15s wieder verfuegbar."
