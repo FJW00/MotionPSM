@@ -65,7 +65,7 @@ HTML_PAGE = '''
       .brand-logo {
         height: 120px;
         width: auto;
-        margin-left: -22px;
+        margin-left: -40px;
       }
       .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
       .brand-name { font-size: 28px; font-weight: 700; color: var(--col-brand); letter-spacing: 0.2px; }
@@ -114,6 +114,38 @@ HTML_PAGE = '''
       .sys-btn-reboot:hover { background: #f5b7b1; }
       .sys-btn-refresh { background: #fdebd0; color: #a04000; }
       .sys-btn-refresh:hover { background: #fad7a0; }
+      .action-bar-center {
+        flex: 1;
+        justify-content: center;
+      }
+      .meas-status {
+        font-size: 12px;
+        font-weight: 500;
+        margin-right: 4px;
+      }
+      .meas-status.running { color: #2e7d32; }
+      .meas-status.stopped { color: #d32f2f; }
+      .meas-btn {
+        background: transparent;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 5px 14px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        color: #444;
+        cursor: pointer;
+        transition: background-color 0.15s, border-color 0.15s;
+      }
+      .meas-btn:hover {
+        background: #f5f5f5;
+        border-color: #999;
+      }
+      .meas-btn-primary {
+        border-color: #888;
+        color: #222;
+      }
+      .meas-btn-link { text-decoration: none; }
       .data-mode-toggle {
         display: inline-flex;
         background: #eee;
@@ -345,7 +377,7 @@ HTML_PAGE = '''
       /* ---------- Mobile ---------- */
       @media (max-width: 800px) {
         .brand-header { flex-direction: column; align-items: flex-start; }
-        .brand-logo { height: 80px; margin-left: -14px; }
+        .brand-logo { height: 80px; margin-left: -25px; }
         .brand-name { font-size: 22px; }
         .brand-right { font-size: 22px; }
         .boom-header h2 { font-size: 18px; }
@@ -366,7 +398,7 @@ HTML_PAGE = '''
       </div>
     </div>
 
-    <!-- Action-Bar: 4 Buttons in einer Zeile, links System-Steuerung, rechts Mess-UI -->
+    <!-- Action-Bar: Alle Controls in einer Zeile -->
     <div class="action-bar">
       <div class="action-bar-group">
         <button type="button" onclick="systemRestart()"
@@ -375,6 +407,16 @@ HTML_PAGE = '''
         <button type="button" onclick="systemRefresh()"
                 title="Service + USB-Reset (~15s, schneller als Reboot)"
                 class="sys-btn sys-btn-refresh">Refresh</button>
+      </div>
+      <div class="action-bar-group action-bar-center">
+        {% if running %}
+          <span class="meas-status running">Running <span id="runtime">0</span> s</span>
+          <button type="button" onclick="exportAndRedirect()" class="meas-btn">Export CSV</button>
+          <a href="{{ url_for('stop') }}" class="meas-btn-link"><button type="button" class="meas-btn">Stop</button></a>
+        {% else %}
+          <span class="meas-status stopped">Stopped</span>
+          <a href="{{ url_for('start') }}" class="meas-btn-link"><button type="button" class="meas-btn meas-btn-primary">Start Measurement</button></a>
+        {% endif %}
       </div>
       <div class="action-bar-group">
         <div class="tare-controls">
@@ -392,12 +434,6 @@ HTML_PAGE = '''
     </div>
 
     {% if running %}
-      <div class="runtime">Measurement running for <span id="runtime">0</span> s</div>
-      <div class="controls">
-        <button onclick="exportAndRedirect()">Export CSV</button>
-        <a href="{{ url_for('stop') }}"><button>Stop Measurement</button></a>
-      </div>
-
       <!-- Hero — Boom Motion (longitudinal = Schwingungs-Hauptmetrik) -->
       <div class="boom-hero">
         <div class="boom-header">
@@ -531,11 +567,6 @@ HTML_PAGE = '''
         </div>
       </div>
 
-    {% else %}
-      <div class="runtime stopped">Measurement stopped.</div>
-      <div class="controls">
-        <a href="{{ url_for('start') }}"><button>Start Measurement</button></a>
-      </div>
     {% endif %}
 
     <script>
