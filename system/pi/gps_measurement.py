@@ -84,7 +84,7 @@ def clear_tare():
     print("[Tare] Nullpunkt geloescht.")
 
 # Filter-Konfig (wird in start_measurement() aus config.json überschrieben)
-FILTER_WINDOW_S = 0.2          # Default: 200 ms Moving-Average
+FILTER_WINDOW_S = 0.5          # Default: 500 ms Moving-Average (5 Samples bei 10 Hz)
 FILTER_SAMPLE_RATE_HZ = 10     # u-blox 10 Hz Sampling
 _r1_long_filter_buf = deque(maxlen=2)  # maxlen wird in start_measurement() neu gesetzt
 _r2_long_filter_buf = deque(maxlen=2)
@@ -819,7 +819,7 @@ def start_measurement():
 
     # Filter-Konfig — Moving-Average-Fensterbreite für R1/R2 longitudinal
     global FILTER_WINDOW_S, _r1_long_filter_buf, _r2_long_filter_buf
-    FILTER_WINDOW_S = float(config.get('FILTER_WINDOW_S', 0.2))
+    FILTER_WINDOW_S = float(config.get('FILTER_WINDOW_S', 0.5))
     filter_samples = max(1, int(round(FILTER_WINDOW_S * FILTER_SAMPLE_RATE_HZ)))
     _r1_long_filter_buf = deque(maxlen=filter_samples)
     _r2_long_filter_buf = deque(maxlen=filter_samples)

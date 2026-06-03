@@ -27,7 +27,13 @@ SyslogIdentifier=motionpsm
 
 # Sicherheit (Pi-typisch konservativ)
 PrivateTmp=false
-NoNewPrivileges=true
+NoNewPrivileges=false
+
+# Bei systemctl stop NUR den Main-Prozess killen (python3 server.py),
+# nicht die ganze cgroup. Damit ueberlebt das vom UI-Button gestartete
+# motionpsm_refresh.sh den 'systemctl stop motionpsm' und kann
+# danach 'systemctl start motionpsm' triggern.
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target

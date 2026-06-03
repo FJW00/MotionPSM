@@ -4,6 +4,7 @@ import gps_measurement as gps
 import threading
 import os
 import glob
+import subprocess
 
 # static_folder='static' ist Default — Flask serviert system/pi/static/ unter /static/
 app = Flask(__name__)
@@ -48,28 +49,32 @@ HTML_PAGE = '''
 
       /* ---------- Brand Header (Logo + FJW Systems links, Real Time Monitor rechts) ---------- */
       .brand-header {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        justify-content: space-between;
         gap: 14px;
         max-width: 1100px;
-        margin: 0 auto 20px;
-        padding: 4px 0;
+        margin: 0 auto 0;
+        padding: 0;
       }
+      .brand-header > .brand-left { justify-self: start; }
+      .brand-header > .brand-status { justify-self: center; }
+      .brand-header > .brand-right-block { justify-self: end; }
       .brand-left {
         display: flex;
         align-items: center;
         gap: 14px;
       }
       .brand-logo {
-        height: 56px;
+        height: 120px;
         width: auto;
+        margin-left: -40px;
       }
       .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
       .brand-name { font-size: 28px; font-weight: 700; color: var(--col-brand); letter-spacing: 0.2px; }
       .brand-tagline { font-size: 12px; color: #888; font-weight: 400; margin-top: 3px; letter-spacing: 0.4px; text-transform: uppercase; }
       .brand-right {
-        font-size: 28px;
+        font-size: 34px;
         font-weight: 700;
         color: var(--col-brand);
         letter-spacing: 0.2px;
@@ -80,6 +85,71 @@ HTML_PAGE = '''
         align-items: flex-end;
         gap: 6px;
       }
+
+      /* Action-Bar: 4 Buttons in einer Zeile unter dem Header */
+      .action-bar {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 14px;
+        max-width: 1100px;
+        margin: -24px auto 8px;
+        padding: 0 0 8px;
+        border-bottom: 1px solid #eee;
+      }
+      .action-bar > .action-bar-group:first-child { justify-self: start; }
+      .action-bar > .action-bar-center { justify-self: center; }
+      .action-bar > .action-bar-group:last-child { justify-self: end; }
+      .action-bar-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sys-btn {
+        padding: 5px 14px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 12px;
+        font-family: inherit;
+        transition: background-color 0.15s;
+      }
+      .sys-btn-reboot { background: #fadbd8; color: #922b21; }
+      .sys-btn-reboot:hover { background: #f5b7b1; }
+      .sys-btn-refresh { background: #fdebd0; color: #a04000; }
+      .sys-btn-refresh:hover { background: #fad7a0; }
+      .action-bar-center {
+        gap: 10px;
+      }
+      .brand-status {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+      }
+      .brand-status.running { color: #2e7d32; }
+      .brand-status.stopped { color: #d32f2f; }
+      .meas-btn {
+        background: transparent;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 7px 18px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        color: #333;
+        cursor: pointer;
+        transition: background-color 0.15s, border-color 0.15s;
+      }
+      .meas-btn:hover {
+        background: #f5f5f5;
+        border-color: #999;
+      }
+      .meas-btn-primary {
+        border-color: #888;
+        color: #222;
+      }
+      .meas-btn-link { text-decoration: none; }
       .data-mode-toggle {
         display: inline-flex;
         background: #eee;
@@ -311,9 +381,9 @@ HTML_PAGE = '''
       /* ---------- Mobile ---------- */
       @media (max-width: 800px) {
         .brand-header { flex-direction: column; align-items: flex-start; }
-        .brand-logo { height: 44px; }
+        .brand-logo { height: 80px; margin-left: -25px; }
         .brand-name { font-size: 22px; }
-        .brand-right { font-size: 22px; }
+        .brand-right { font-size: 26px; }
         .boom-header h2 { font-size: 18px; }
         .boom-values { grid-template-columns: 1fr; }
         .secondary-grid { grid-template-columns: 1fr; }
@@ -325,37 +395,50 @@ HTML_PAGE = '''
     <!-- Brand Header: Logo + FJW Systems links, Real Time Monitor rechts -->
     <div class="brand-header">
       <div class="brand-left">
-        <img src="{{ url_for('static', filename='logo_fjw.png') }}" alt="FJW Logo" class="brand-logo">
-        <div class="brand-text">
-          <div class="brand-name">FJW Systems</div>
-          <div class="brand-tagline">MotionPSM</div>
-        </div>
+        <img src="{{ url_for('static', filename='fjw_systems_aufkleber.svg') }}" alt="FJW Systems Logo" class="brand-logo">
+      </div>
+      <div class="brand-status {% if running %}running{% else %}stopped{% endif %}">
+        {% if running %}Running <span id="runtime">0</span> s{% else %}Stopped{% endif %}
       </div>
       <div class="brand-right-block">
-        <div class="brand-right">Real Time Monitor</div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="tare-controls">
-            <button type="button" class="tare-btn" id="tare_btn" title="Save current values as zero reference">⌖ Set Zero</button>
-            <span class="tare-status" id="tare_status">
-              <span>Tared <span id="tare_time">--:--:--</span></span>
-              <button type="button" class="tare-clear" id="tare_clear" title="Clear tare">×</button>
-            </span>
-          </div>
-          <div class="data-mode-toggle" id="data_mode_toggle">
-            <button type="button" data-mode="filtered" class="active">Smoothed</button>
-            <button type="button" data-mode="raw">Raw</button>
-          </div>
+        <div class="brand-right">MotionPSM</div>
+      </div>
+    </div>
+
+    <!-- Action-Bar: Alle Controls in einer Zeile -->
+    <div class="action-bar">
+      <div class="action-bar-group">
+        <button type="button" onclick="systemRestart()"
+                title="Pi komplett neustarten (~60s)"
+                class="sys-btn sys-btn-reboot">Reboot</button>
+        <button type="button" onclick="systemRefresh()"
+                title="Service + USB-Reset (~15s, schneller als Reboot)"
+                class="sys-btn sys-btn-refresh">Refresh</button>
+      </div>
+      <div class="action-bar-group action-bar-center">
+        {% if running %}
+          <button type="button" onclick="exportAndRedirect()" class="meas-btn">Export CSV</button>
+          <a href="{{ url_for('stop') }}" class="meas-btn-link"><button type="button" class="meas-btn">Stop</button></a>
+        {% else %}
+          <a href="{{ url_for('start') }}" class="meas-btn-link"><button type="button" class="meas-btn meas-btn-primary">Start Measurement</button></a>
+        {% endif %}
+      </div>
+      <div class="action-bar-group">
+        <div class="tare-controls">
+          <button type="button" class="tare-btn" id="tare_btn" title="Save current values as zero reference">⌖ Set Zero</button>
+          <span class="tare-status" id="tare_status">
+            <span>Tared <span id="tare_time">--:--:--</span></span>
+            <button type="button" class="tare-clear" id="tare_clear" title="Clear tare">×</button>
+          </span>
+        </div>
+        <div class="data-mode-toggle" id="data_mode_toggle">
+          <button type="button" data-mode="filtered" class="active">Smoothed</button>
+          <button type="button" data-mode="raw">Raw</button>
         </div>
       </div>
     </div>
 
     {% if running %}
-      <div class="runtime">Measurement running for <span id="runtime">0</span> s</div>
-      <div class="controls">
-        <button onclick="exportAndRedirect()">Export CSV</button>
-        <a href="{{ url_for('stop') }}"><button>Stop Measurement</button></a>
-      </div>
-
       <!-- Hero — Boom Motion (longitudinal = Schwingungs-Hauptmetrik) -->
       <div class="boom-hero">
         <div class="boom-header">
@@ -489,11 +572,6 @@ HTML_PAGE = '''
         </div>
       </div>
 
-    {% else %}
-      <div class="runtime stopped">Measurement stopped.</div>
-      <div class="controls">
-        <a href="{{ url_for('start') }}"><button>Start Measurement</button></a>
-      </div>
     {% endif %}
 
     <script>
@@ -687,6 +765,26 @@ HTML_PAGE = '''
       setInterval(fetchData, 100);
       {% endif %}
 
+      function systemRestart() {
+        if (!confirm("Pi wirklich neustarten?\\n\\nDie UI ist ~60s nicht erreichbar.\\nDie laufende Messung wird gestoppt.")) return;
+        fetch('/system_restart', {method: 'POST'})
+          .then(r => r.json())
+          .then(d => {
+            alert("Pi startet neu.\\n\\nIn ~60s Seite neu laden (F5).\\nDer Server kommt durch den Autostart automatisch zurueck.");
+          })
+          .catch(e => alert("Fehler beim Neustart-Aufruf: " + e));
+      }
+
+      function systemRefresh() {
+        if (!confirm("Refresh ausfuehren?\\n\\nServer wird gestoppt, USB der F9P resetet, Service startet neu.\\nDauert ~15 Sekunden. Laufende Messung wird gestoppt.")) return;
+        fetch('/system_refresh', {method: 'POST'})
+          .then(r => r.json())
+          .then(d => {
+            alert("Refresh laeuft.\\n\\nIn ~15s Seite neu laden (F5).");
+          })
+          .catch(e => alert("Fehler beim Refresh-Aufruf: " + e));
+      }
+
       function exportAndRedirect() {
         const a = document.createElement('a');
         a.href = "{{ url_for('export_csv') }}";
@@ -874,6 +972,67 @@ def export_csv():
         return response
 
     return send_file(path, as_attachment=True, download_name=filename, mimetype="text/csv")
+
+
+@app.route('/system_restart', methods=['POST'])
+def system_restart():
+    """Pi neu starten via sudo reboot.
+
+    Voraussetzung: /etc/sudoers.d/motionpsm existiert und erlaubt
+    dem Service-User NOPASSWD: /sbin/reboot.
+    Setup einmalig per: sudo bash tools/setup_sudoers.sh
+    """
+    try:
+        if state.running:
+            try:
+                gps.stop_measurement()
+            except Exception as e:
+                print(f"[Reboot] stop_measurement Fehler (ignoriert): {e}")
+            state.running = False
+            state.start_time = None
+
+        subprocess.Popen(['sudo', '-n', '/sbin/reboot'], start_new_session=True)
+        return jsonify({
+            "status": "ok",
+            "message": "Pi startet neu. UI in ~60s wieder verfuegbar."
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/system_refresh', methods=['POST'])
+def system_refresh():
+    """Service stoppen, F9P USB resetten, Service starten.
+
+    Schneller Alternative zum Pi-Reboot (~15 s statt ~60 s).
+    Verwendet tools/motionpsm_refresh.sh als Helper, da der Server
+    sich selbst nicht killen kann.
+
+    Voraussetzung: /etc/sudoers.d/motionpsm existiert und erlaubt
+    dem Service-User NOPASSWD fuer motionpsm_refresh.sh.
+    Setup einmalig per: sudo bash tools/setup_sudoers.sh
+    """
+    try:
+        if state.running:
+            try:
+                gps.stop_measurement()
+            except Exception as e:
+                print(f"[Refresh] stop_measurement Fehler (ignoriert): {e}")
+            state.running = False
+            state.start_time = None
+
+        # Absoluter Pfad zum Helper-Skript - sudoers erwartet exakt diesen Pfad
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "..", "..", "tools", "motionpsm_refresh.sh")
+        script_path = os.path.abspath(script_path)
+
+        subprocess.Popen(['sudo', '-n', '/bin/bash', script_path], start_new_session=True)
+        return jsonify({
+            "status": "ok",
+            "message": "Refresh laeuft. UI in ~15s wieder verfuegbar."
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -4,6 +4,62 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-06-02 spaet abends — UI-Politur (Branch feature/ui-system-restart)
+
+Iteration auf dem Reboot/Refresh-Branch nach Falks Feedback:
+
+1. **Filter-Default 0.2 → 0.5 s** (Moving-Average 5 Samples statt 2). Setzt sich in `gps_measurement.py` Default UND `config.example.json`. Falks lokales `config.json` muss zusaetzlich aktualisiert werden. Hintergrund: RTK-Rauschen so klein, dass Smoothed/Raw kaum unterscheidbar war — mit 500 ms-Fenster sichtbarere Glaettung.
+2. **Header-Text:** "Real Time Monitor" → "MotionPSM" (oben rechts).
+3. **Layout-Restructure:** alle 4 Buttons in eine eigene `action-bar`-Zeile UNTER dem Brand-Header. Reboot/Refresh links, Set Zero + Smoothed/Raw rechts (`justify-content: space-between`). Brand-Header bleibt zweizeilig (Logo + Name).
+4. **Logo:** `logo_fjw.png` → `logo_brand.svg`. Das offizielle Firmenlogo aus `business/website/assets/` ist jetzt im Repo unter `system/pi/static/logo_brand.svg`. SVG skaliert sauber bei Tablet-Zoom.
+
+Neue CSS-Klassen: `.action-bar`, `.action-bar-group`, `.sys-btn`, `.sys-btn-reboot`, `.sys-btn-refresh`. Hover-States fuer Reboot/Refresh.
+
+---
+
+## 2026-06-02 abends — UI-Buttons "Reboot" + "Refresh" (Branch feature/ui-system-restart)
+
+**Ziel:** Für DLG zwei UI-Buttons im Brand-Header, mit denen Falk vom Tablet aus den Pi neu starten ODER nur den Service+USB-Reset auslösen kann — ohne SSH am Stand.
+
+**Branch:** `feature/ui-system-restart` (von main da3cda1)
+
+**Aenderungen `server.py`:**
+1. Neuer Endpoint `POST /system_restart`:
+   - Stoppt laufende Messung sauber
+   - `subprocess.Popen(['sudo', '-n', '/sbin/reboot'])` (detached)
+2. Neuer Endpoint `POST /system_refresh`:
+   - Stoppt laufende Messung sauber
+   - `subprocess.Popen(['sudo', '-n', '/bin/bash', tools/motionpsm_refresh.sh])` (detached)
+3. HTML im Brand-Header: roter Button **Reboot** + oranger Button **Refresh** rechts neben "Real Time Monitor"
+4. JS `systemRestart()` und `systemRefresh()` mit `window.confirm()` Dialog + Alert
+
+**Neue Helper-Skripte:**
+- `tools/motionpsm_refresh.sh` — laeuft als root via sudo:
+  1. `sleep 1.5` (Flask-Response zurueck zum Client)
+  2. `systemctl stop motionpsm.service` (toetet server.py)
+  3. `tools/usb_reset_f9p.sh` (USB-unbind+bind)
+  4. `systemctl start motionpsm.service` (Server kommt zurueck)
+  Loggt nach `/tmp/motionpsm_refresh.log`
+- `tools/setup_sudoers.sh` — schreibt `/etc/sudoers.d/motionpsm`:
+  ```
+  $USER ALL=(ALL) NOPASSWD: /sbin/reboot, /bin/bash <repo>/tools/motionpsm_refresh.sh
+  ```
+  Selbst-Pruefung via `visudo -c` VOR Installation (kein lockout-Risiko).
+
+**Sicherheit:** sudoers erlaubt EXAKT `/sbin/reboot` und den vollen Pfad zu `motionpsm_refresh.sh`. Wenn jemand das Skript modifiziert um beliebigen Code auszufuehren — der User hat eh die Rechte das Skript zu modifizieren, also kein Privilegien-Eskalation.
+
+**Test-Plan (auf Branch, vor merge nach main):**
+1. `git pull && git checkout feature/ui-system-restart`
+2. `sudo bash tools/setup_sudoers.sh` (einmalig)
+3. `sudo -n /sbin/reboot --help` → muss ohne Passwort gehen
+4. UI im Browser - beide Buttons sichtbar
+5. **Refresh** klicken → ~15 s warten → F5 → UI wieder da, gleiche Pi-Session
+6. **Reboot** klicken → ~60 s warten → F5 → UI wieder da, neue Pi-Session
+
+**Bei Erfolg:** merge `feature/ui-system-restart` → `main`, Tag v1.0-dlg force-move.
+
+---
+
 ## 2026-06-02 — Frontend-Polling 1000ms → 100ms (validiert, in v1.0-dlg)
 
 **Befund 02.06. abends, 4-Run-Hof-Test mit Desktop deaktiviert:**
