@@ -186,9 +186,13 @@ def BaseThread():
     B_Speed = 0
     Base_Heading = 0
 
+    # Fix (23.07.2026): UBXReader EINMAL vor der Schleife instanzieren.
+    # Vorher wurde er in jeder Iteration neu erzeugt → verlorene Bytes aus dem Stream-Puffer
+    # → jede zweite NAV-PVT-Message ging verloren → CSV lief auf 5 Hz statt 10 Hz.
+    ubr = UBXReader(streamBase, validate=0)
+
     while not stop_event.is_set():
         try:
-            ubr = UBXReader(streamBase, validate=0)
             raw_data, parsed_data = ubr.read()
         except (TypeError, OSError, Exception) as e:
             # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
@@ -242,9 +246,11 @@ def Rover1_Thread():
     abs_heading = 0
     mov_avg_heading = 0
 
+    # Fix (23.07.2026): UBXReader EINMAL vor der Schleife instanzieren (siehe BaseThread)
+    ubr = UBXReader(streamRover1, validate=0)
+
     while not stop_event.is_set():
         try:
-            ubr = UBXReader(streamRover1, validate=0)
             raw_data, parsed_data = ubr.read()
         except (TypeError, OSError, Exception) as e:
             # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
@@ -334,9 +340,11 @@ def Rover2_Thread():
     abs_heading = 0
     mov_avg_heading = 0
 
+    # Fix (23.07.2026): UBXReader EINMAL vor der Schleife instanzieren (siehe BaseThread)
+    ubr = UBXReader(streamRover2, validate=0)
+
     while not stop_event.is_set():
         try:
-            ubr = UBXReader(streamRover2, validate=0)
             raw_data, parsed_data = ubr.read()
         except (TypeError, OSError, Exception) as e:
             # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
@@ -439,9 +447,11 @@ def Rover3_Thread():
     abs_heading = 0
     mov_avg_heading = 0
 
+    # Fix (23.07.2026): UBXReader EINMAL vor der Schleife instanzieren (siehe BaseThread)
+    ubr = UBXReader(streamRover3, validate=0)
+
     while not stop_event.is_set():
         try:
-            ubr = UBXReader(streamRover3, validate=0)
             raw_data, parsed_data = ubr.read()
         except (TypeError, OSError, Exception) as e:
             # Stream wurde geschlossen (stop_measurement) ODER Lese-Fehler — sauber beenden
