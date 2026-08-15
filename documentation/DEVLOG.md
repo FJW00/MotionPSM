@@ -4,6 +4,241 @@ Detail-Log aller Änderungen am MotionPSM-System. Neueste Einträge oben.
 
 ---
 
+## 2026-08-15 — Live-Degradation: Kandidat 2 (Thermik) ausgeschlossen, nächster Test vorbereitet
+
+**Kandidat 2 (thermische Pi-Drosselung) ausgeschlossen — Falks Gegenargument:** War nicht heiß am 14.08., und wichtiger: ein CFG-RST-Reset am F9P-Modul kann die Pi-CPU-Temperatur/-Drosselung gar nicht beeinflussen. Dass der Reset zuverlässig sofort wieder 10Hz bringt, beweist, dass die Ursache am F9P/USB-Pfad hängt, nicht an allgemeiner Pi-Rechenlast/Hitze. Sauberer Ausschluss, nicht nur Bauchgefühl.
+
+**Falk hat außerdem die USB-Strom-Drosselung am Pi (Throttling bei zu hoher Stromaufnahme über die USB-Ports) deaktiviert.** Für später als Idee notiert, aber nicht akut: F9P-Module ggf. direkt über eigene 5V-Versorgung statt über Pi-USB-Strom versorgen, falls Strom weiterhin ein Thema wird.
+
+**Verbleibende Kandidaten für die Live-Degradation während einer laufenden Messung** (Sammlung aus Falks und meinen Ideen):
+- GIL-Kontention Flask vs. Producer-Threads mit sich aufschaukelndem Rückstau (Puffer/Backlog wächst statt sich einzupendeln)
+- Pi drosselt USB-Geschwindigkeit unter Last (unabhängig von der jetzt deaktivierten Strom-Drosselung — ggf. Bandbreiten-/Scheduling-Ebene)
+- F9P-interner Sende-Puffer läuft voll, wenn Host nicht schnell genug abholt (Falk hält das für unwahrscheinlich)
+- Moving-Base fürs Senden an 1 Rover ausgelegt, jetzt an 3 gleichzeitig — vermutlich kein Faktor, da RTCM-Output vermutlich als Broadcast auf UART2 läuft (ein Sendevorgang, mehrere passive Hörer), nicht pro Rover einzeln dupliziert — müsste aber verifiziert werden, nicht nur angenommen.
+- USB-Verbindung/Controller am Pi generell (Hub-Bandbreite, Scheduling)
+
+**Nächster Test (vorbereitet, noch nicht ausgeführt):** 4 Module **gleichzeitig, aber komplett unabhängig von `gps_measurement.py`/Flask** auslesen — 4 separate Python-Prozesse parallel für 60s (kein gemeinsamer GIL, kein Flask-Polling), Wall-Clock-Zeit + iTOW pro Sample in JSON loggen. Soll trennen zwischen:
+- Degradation tritt AUCH hier auf → Ursache liegt auf USB/Hardware-Ebene (Pi-Controller, F9P-Verhalten unter 4-fach-Last), unabhängig vom Python-Code.
+- Bleibt sauber bei 10Hz → Ursache ist spezifisch an der `gps_measurement.py`/Flask-Architektur festzumachen (GIL/Threading).
+
+Skript-Vorlage liegt im Chat-Verlauf bereit (4 parallele `python3 -c`-Hintergrundprozesse, einer pro Modul, `wait` am Ende, JSON-Output nach `/tmp/hz_parallel_test/`).
+
+**Test offen:** Hoftest-Aufbau + paralleler Test stehen noch aus (Falk ist heute an was anderem dran, macht das, sobald der Hoftest wieder steht).
+
+---
+
+## 2026-08-14 (Fortsetzung 3) — CFG-RST-Reset auf alle 4 Module + End-to-End-Test: weiterhin NEGATIV
+
+**Was:** UBX-CFG-RST (Hardware-Reset, Hot-Start) auf alle 4 Module (Base, R1, R2, R3) angewendet, einzeln verifiziert (siehe unten), danach `systemctl start motionpsm` und echte Messung über die Web-UI (Set Zero → Start → ~60s → Stop → Export). 2 CSVs unter `~/Documents/FJW_Schwingung/Records/CSV/20260814/`.
+
+**Einzel-Verifikation der Rover nach Reset (vor der eigentlichen Messung):** R1/R2/R3 lagen vor dem Reset alle bei ~4.6-4.7 Hz (200ms-Boden, festgefahren aus den vielen Tests/Start-Stops des Tages). Nach CFG-RST-Reset + Wartezeit: wenn Daten kamen, ~9.9 Hz (82×100ms + 12×200ms) — deutliche Verbesserung, nicht perfekt. Vereinzelt 0 Samples in den ersten Verifikationsversuchen direkt nach Reset (`Port wieder offen` aber 0 NAV-RELPOSNED in 10s) — plausibel durch RTK-Ambiguitäts-Neuaufbau nach Hardware-Reset, der laenger dauert als der reine Port-Reconnect; begleitet von "Unknown protocol header"-Meldungen (Frame-Muell waehrend des Modul-Neustarts, erwartbar, kein eigenstaendiger Bug).
+
+**End-to-End-Ergebnis trotzdem negativ:**
+
+| Datei | Dauer | Median dt | ≤100ms | eff. Rate | Sync-Mismatches |
+|---|---|---|---|---|---|
+| 194005 | 61s | 200ms | 0.0% | 4.22 Hz | 0 |
+| 194233 | 60s | 200ms | 19.5% | 3.31 Hz | 0 |
+
+Sync weiterhin perfekt (0 Mismatches R1/R2/R3/Base) — bestätigt erneut, dass der Logger nicht die Ursache ist.
+
+**Korrektur nach genauerem Blick auf den zeitlichen Verlauf (nicht nur die aggregierte Verteilung) — Falk hat zu Recht nachgehakt:**
+
+- **194005** (mit mehr Zwischenschritten zwischen Reset und Start): von Sample 0 an nie 100ms, durchgehend 200/500ms im Wechsel.
+- **194233** (laut Falk: direkt nach Restart, ohne Pause, sofort UI → Start): **die ersten 8 Samples laufen exakt bei 100ms** — sauberer 10-Hz-Start, bestätigt dass ein wirklich unmittelbarer Reset→Start-Übergang funktioniert. Danach kippt es aber **progressiv während der laufenden Messung**: ab ca. Sample 60 (~10-12s Messdauer) dominiert 200ms, ab Sample ~140 kommen zunehmend große Aussetzer (500-2200ms) dazu.
+
+**Das heißt: zwei unterschiedliche, sich überlagernde Mechanismen, nicht einer:**
+1. **Vor-Start-Degradation** (bereits bekannt): Zwischenschritte/Verzögerung zwischen Reset und Messstart verschlechtern die Startqualität (194005 vs. 194233).
+2. **NEU — Live-Degradation während der Messung selbst:** Selbst mit sauberem 100ms-Start baut sich die Rate innerhalb der 60s-Messung progressiv ab. Das konnten die bisherigen Isolationstests nie zeigen, weil die immer nur 10s mit einem einzelnen Thread liefen, nie 60s mit dem vollen System (4 Threads + Flask-Polling durch den Browser alle 100ms). Das deutet wieder Richtung der alten GIL/Flask-Polling-Konkurrenz-Theorie aus dem Juni 2026 — zusätzlich zur F9P-internen Akkumulation, die heute isoliert nachgewiesen wurde.
+
+**Schlussfolgerung für heute:** Ein einmaliger Reset zu Sessionbeginn reicht nicht — weder gegen die Vor-Start-Degradation (braucht Reset unmittelbar vor jedem Start) noch gegen die Live-Degradation während der Messung (das ist ein anderes, noch ungeklärtes Thema, vermutlich GIL/Threading-bezogen, nicht F9P-Hardware).
+
+**Nicht heute umgesetzt** (Falk wollte für heute Schluss machen) — Code-Änderungen erst nach Rücksprache, siehe Standing Rule #4 (Approval vor größeren Änderungen).
+
+**Test offen (zwei getrennte Baustellen für nächstes Mal):**
+1. **Vor-Start-Degradation:** CFG-RST-Reset direkt in `start_measurement()` integrieren (eigener Branch, nicht auf `fix/reader-once-per-thread`), mit Wartezeit auf RTK-Fix statt fixem Sleep.
+2. **Live-Degradation während der Messung:** eigene Diagnose nötig — z.B. dt-Verlauf über die Zeit in einer 60s-Messung mit `top`/CPU-Last parallel beobachten, ob GIL-Kontention (Flask-Polling vs. Producer-Threads) zeitlich mit dem Abfall korreliert. Nicht mit Schritt 1 verwechseln, vermutlich unabhängige Ursache.
+3. Branch `fix/reader-once-per-thread` bleibt weiterhin ungemergt, `main` weiterhin auf `v1.0-dlg`.
+
+---
+
+## 2026-08-14 (Fortsetzung 2) — Akkumulation lokalisiert: F9P-intern, nicht Pi/Kernel/Python
+
+*(Datums-Korrektur: dieser und die beiden folgenden Einträge waren ursprünglich fälschlich auf 05.08. datiert — Standing Rule #1 nicht befolgt, Datum nicht neu geprüft nach Session-Sprung. Tatsächliches Datum laut Systemzeit + CSV-Timestamps: 14.08.2026. Zwischen dem Hoftest vom 05.08. und dieser Diagnose-Session lagen also 9 Tage.)*
+
+**Testreihe (Falk, isolierter Base-Test, mehrere aufeinanderfolgende `python3 -c`-Prozesse):**
+
+| Schritt | Aktion | Ergebnis |
+|---|---|---|
+| 1 | frischer Zustand | 9.8 Hz (94×100ms, 3×200ms) |
+| 2 | nochmal derselbe Test, kein UI-Kontakt | 8.4 Hz |
+| 3 | nochmal | 6.9 Hz |
+| 4 | nochmal | 7.0 Hz |
+| 5 | `usb_reset_f9p.sh` (Kernel-Unbind/Bind aller 4 Module, Strom bleibt an) | 7.4 Hz — **kaum Besserung** |
+| 6 | Base **physisch aus- und wieder eingesteckt** (echter Stromausfall am Modul) | **10.1 Hz — sauber zurückgesetzt** |
+
+**Zentrale Deduktion:** Jeder Testlauf ist ein komplett unabhängiger, frisch gestarteter `python3 -c`-Prozess — es kann also kein Python-interner State zwischen den Läufen überleben. Die Akkumulation liegt damit nachweislich außerhalb von `gps_measurement.py` und außerhalb von Python generell. Dass selbst das Kernel-seitige USB-Unbind/Bind (Schritt 5 — das Gerät wird aus Sicht des Linux-Treibers vollständig ab- und neu angemeldet) keine Wirkung zeigt, aber das echte Stromtrennen (Schritt 6) sofort resettet, lokalisiert die Ursache **im F9P-Modul selbst** — vermutlich ein interner USB-Peripherie-/Puffer-Zustand in der Empfänger-Firmware, der mit jeder neuen Host-Verbindung (Serial-Open) ohne echten Power-Cycle etwas degradiert.
+
+**Bedeutung für die bisherige Diagnose-Kette:** Widerlegt die Milestone-B-Grundannahme ("Subprocess-Architektur löst Akkumulations-Bug, da sauberer Prozess-Kill") — ein neuer OS-Prozess ändert nichts, weil der Zustand nicht auf OS/Python-Ebene sitzt. NMEA-Multicast-Fix (30.05./14.08.) und RTCM3-Fix (14.08.) waren beide berechtigt und wirksam für den Ruhezustand (sauber 10 Hz vor jeder Nutzung) — lösen aber nicht die Degradation durch wiederholtes Öffnen/Schließen der Verbindung.
+
+**Praktische Konsequenz:** Physisches Kabel-Ziehen zwischen jeder Messung ist im Feld nicht praktikabel. Nächster Test: **UBX-CFG-RST (Hardware-Reset, Hot-Start, `navBbrMask=0`)** per Software an die Base senden — simuliert intern einen Chip-Reset ähnlich dem Stromausfall, ohne Kabel anzufassen. Falls das denselben Reset-Effekt hat wie Schritt 6: Kandidat, um direkt in `start_measurement()` eingebaut zu werden (Reset senden, kurz auf Fix warten, dann erst Messung starten) — würde das Problem für jede Feldsession automatisch lösen.
+
+**Test offen:** UBX-CFG-RST-Test von Falk ausstehend. Falls das NICHT reicht: Fallback wäre eine steuerbare USB-Hub-Stromversorgung (z.B. `uhubctl`, falls der verwendete Hub Port-Power-Switching unterstützt) um den physischen Power-Cycle zu automatisieren.
+
+---
+
+## 2026-08-14 (Fortsetzung) — RTCM3-Multicast-Fix bestätigt + Akkumulations-Bug lebt noch
+
+**RTCM3-Fund (Falk, per u-center direkt an Base):** Auf der Base waren mehrere RTCM3-Messages zusätzlich zu UART2 (Sollzustand laut Architektur: RTCM nur UART2 Base→Rover) noch auf **USB und UART1** aktiv. Rausgenommen. Gleiches Muster wie der NMEA-Multicast-Fund vom 30.05. — nur bei den Korrektur-Messages statt bei NMEA/GGA/RMC/VTG, zusätzliche Output-Operationen pro Zyklus.
+
+**Bestätigt: Fix wirkt.** Isolierter 10s-dt-Test auf Base direkt nach dem RTCM3-Fix, **vor** jedem Start einer Messung über die Web-UI: N=100, dt-Verteilung 97× 100ms + 2× 200ms → **10.0 Hz effektiv, sauber.**
+
+**Neuer, wichtigerer Fund direkt danach:** Web-UI aufgerufen, **eine** Messung gestartet und wieder gestoppt (Service danach wieder gestoppt für den nächsten Isolationstest) — direkt danach derselbe 10s-dt-Test auf Base: N=77, dt = 52× 100ms + 24× 200ms → **7.7 Hz.** Keine Config wurde dazwischen verändert. Einziger Unterschied: `gps_measurement.py` hat einmal den Base-Port geöffnet und wieder geschlossen.
+
+**Einordnung:** Das ist mit hoher Wahrscheinlichkeit der alte **"Akkumulations-Bug"**, dokumentiert am 22.05., 30.05. und 01.06.2026 ("2.-N. Messung (nur Server-Restart): 200-247ms iTOW-Mittel... Nur Pi-Reboot setzt vollständig zurück"). Der wurde damals nie ursächlich gelöst, nur mit `/tmp`-Cleanup + `usb_reset_f9p.sh` pragmatisch für die DLG umschifft, und die systematische Lösung auf Milestone B (Subprocess-Architektur) vertagt. Sieht so aus, als sei er nie weg gewesen — er wurde von der viel dominanteren NMEA/RTCM-Multicast-Drosselung überdeckt, die jetzt gefixt ist.
+
+**Konsequenz für die bisherige Diagnose-Kette:** Die 200ms/5Hz-Werte im Hoftest-CSV vom 05.08. (siehe Eintrag oben) waren vermutlich eine Überlagerung aus zwei unabhängigen Bugs: Base-Multicast (jetzt gefixt) + Start/Stop-Akkumulation (weiterhin offen). Reine F9P-Config-Fixes reichen also nicht für einen im Feld nutzbaren Zustand — nach jedem Start/Stop-Zyklus einer Messung würde man wieder degradieren.
+
+**Test offen (bestätigender Test, von Falk angekündigt):**
+1. Pi-Reboot, ohne Website/Messung: Base-Test → erwartet wieder sauber 10 Hz (Baseline-Reset-Verhalten wie in den alten Einträgen beschrieben).
+2. Eine Messung starten/stoppen, danach Test → erwartet erneuter Rückgang (Reproduzierbarkeit).
+3. Zweites Start/Stop ohne Reboot dazwischen → alte Einträge deuten auf **progressive** Verschlechterung mit jedem weiteren Zyklus hin, nicht nur einen einmaligen Sprung.
+
+**Falls bestätigt:** nächster Fokus verschiebt sich von F9P-Config zurück zu `stop_measurement()`/`start_measurement()` in `gps_measurement.py` — was genau beim Schließen/Wiederöffnen des Serial-Streams einen sauberen Neustart verhindert.
+
+---
+
+## 2026-08-05 — Hoftest UBXReader-Fix: NEGATIV. Root-Cause liegt nicht im Logger.
+
+**Was:** Verifikations-Hoftest für `fix/reader-once-per-thread` (Commit `8b0c6c5`) durchgeführt (Falk, 20:38–20:50 Uhr), 7 Messläufe à 60 s im Hof. CSVs abgelegt unter `data/Records/Reader-once-per-thread/`.
+
+**Ergebnis: Fix hat NICHT gewirkt.** dt-Analyse über alle 7 CSVs (`R1_Rover_time`-iTOW-Diffs):
+
+| Kennzahl | Erwartung | Tatsächlich |
+|---|---|---|
+| Median dt | ~100 ms | **200 ms** (alle 7 Läufe) |
+| Anteil dt ≤100 ms | ≥95 % | 0.1 % |
+| Effektive Rate | ≥9.5 Hz | 3.2–5.0 Hz |
+
+RTK-Quality durchgehend 4 (Fix) in allen Läufen — kein GNSS/RTK-Problem.
+
+**Entscheidender Zusatzbefund — Logger-Sync ist NICHT die Ursache:** `R1_Rover_time`, `R2_Rover_time`, `R3_Rover_time` und `Base_Time` sind in **allen 7 Dateien zu 100 % identisch pro Zeile** (0 Mismatches über 1830 Zeilen). Falk hat den Hoftest zusätzlich live per `journalctl -u motionpsm -f` verfolgt — keine einzige "[Logger] dropped X iTOWs"-Meldung. Das heißt: `csv_logger_thread_buffered` (iTOW-Dict, Refactor C) funktioniert exakt wie designed und verliert nichts. Alle vier Threads (Base + R1 + R2 + R3) liefern neue iTOWs bereits **quellseitig nur alle 200 ms im Gleichschritt** — das ist kein Race/Sync-Problem im Python-Code, sondern eine Rate-Begrenzung vor dem Logger.
+
+**Damit sind widerlegt:** Milestone-A-Hypothese (Queue-Konsum vor Toleranz-Prüfung, 17.07.) UND die UBXReader-Neuinstanziierungs-Hypothese (26.07.) als alleinige/hinreichende Ursache — beide sind Logger-/Reader-interne Fixes, aber das Problem sitzt eine Ebene tiefer.
+
+**Neue Hypothese:** Rate-Ceiling auf F9P-Hardware-Ebene, vermutlich analog zum bereits einmal gelösten Fall vom 30.05.2026 ("NMEA-Multicast drosselt intern auf 5 Hz", siehe Eintrag weiter unten) — nur diesmal vermutlich am **Base-Modul**, das laut CLAUDE.md-Stand nie auf `Base_USBonly_v2` geflasht wurde ("Kleinigkeit, 5 Min am Modul" — offener Punkt seit 30.05., nie erledigt). Passt zum Bild: Base_Time läuft im exakten Gleichschritt mit allen 3 Rovern — in Moving-Base-RTK hängt die Rover-RELPOSNED-Rate an den RTCM-Korrekturepochen der Base. Wenn Base intern (NMEA auf allen 5 Ports weiterhin aktiv, nicht USB-only) auf 5 Hz gedrosselt ist, geht das über die RTCM-Kopplung 1:1 auf alle 3 Rover durch — unabhängig vom UBXReader-Fix im Python-Code.
+
+**Sekundärbefund:** in 6 von 7 Läufen zusätzlich 7–21 % der Übergänge bei ~500 ms statt 200 ms (Lauf 1, 20:38 Uhr, war sauber — nur 2×400 ms). Fällt zeitlich mit den geplanten Hand-Auslenkungen an R1/R2 zusammen, vermutlich kurze RTK-Fix-Aussetzer durch Antennen-Anfassen, separates Thema von der 200-ms-Rate-Deckelung.
+
+**Test offen (nächster Schritt, VOR weiterem Code):**
+1. CFG-RATE-MEAS auf allen 4 Modulen direkt prüfen (u-center oder `pyubx2 UBX-CFG-VALGET`) — insbesondere ob das am 30.05. verifizierte 100-ms-Setting noch steht, speziell auf der Base.
+2. Base-Konfiguration gegen `system/config/f9p_ucenter/usb_only_v2_2026-05-30/` prüfen — Base wurde damals bewusst NICHT geflasht ("war nicht der Bottleneck" laut damaliger NAV-PVT-Messung). Zu klären: ob das unter vollem Moving-Base-RTK-Betrieb im Feld (statt Schreibtisch-Bench-Test ohne RTK-Last) noch stimmt.
+3. Falls Base der Flaschenhals ist: `Base_USBonly_v2.txt` flashen (liegt vermutlich schon vor, siehe `f9p_ucenter`-Ordner) und Hoftest wiederholen.
+
+**Risiko:** Kein Blocker für die bereits versendeten DLG-Kurzberichte (Nyquist bei 5 Hz für 0.5–2 Hz Boom-Schwingung weiterhin erfüllt). Blockiert aber weiterhin Milestone B und jede Frequenz-Spektrum-Analyse als Angebot. `fix/reader-once-per-thread` bleibt unangetastet, main bleibt auf `v1.0-dlg` — **kein Merge, kein Tag `v1.1-post-dlg`.**
+
+### Update selber Tag — CFG-Check + Base-USB-only + Einzel-Hz-Test (Falk, ZBook direkt an Modulen)
+
+**CFG-Werte auf Base verifiziert:** `RATE-MEAS=100ms`, `RATE-NAV=1` → angeforderte Rate korrekt 10 Hz (100×1). `RATE-TIMEREF=1 (GPS)` unauffällig. Diese Werte allein beweisen aber nichts über die *tatsächlich erreichte* Rate — dieselbe Lücke gab es schon am 30.05. (Config sagte 10 Hz, Chip lieferte real 5 Hz durch Output-Overload).
+
+**Base MSGOUT auf USB-only umgestellt:** NMEA-GGA/RMC/VTG liefen auf Base noch auf UART/I2C zusätzlich zu USB (Rover waren das seit 30.05. nicht mehr, Base wurde damals bewusst ausgenommen). Auf USB-only gestellt, persistent gespeichert (BBR+Flash, laut Falk bestätigt).
+
+**Isolierter Hz-Test auf Base (Service gestoppt, Antennen dran, Fix erreicht):**
+- 5s-Test: 6.2 Hz
+- 10s-Test mit dt-Verteilung: **N=67, dt = 33× 100ms + 33× 200ms exakt alternierend, 6.7 Hz effektiv**
+
+**Wichtiger Deutungs-Shift:** Ein reines Rate-Ceiling (Chip berechnet nur alle 200ms eine neue Lösung) könnte niemals 100ms-Abstände produzieren. Dass hier exakt die Hälfte der Übergänge bei 100ms liegt, beweist: **die Base liefert intern tatsächlich 10 Hz**, aber ca. jede zweite NAV-PVT-Message geht zwischen Empfänger und Python-Zählskript verloren — randomisiert, nicht deterministisch. Strukturell dasselbe Symptom wie der UBXReader-Bug vom 26.07., obwohl der Reader in diesem Diagnose-Skript bereits korrekt einmal instanziiert wird (entspricht dem gefixten Pattern). Die Base-USB-only-Änderung hat leicht geholfen (5.0 → 6.2–6.7 Hz), aber nicht das Kernproblem gelöst.
+
+**Neue Arbeitshypothese:** NMEA-Frames (GGA/RMC/VTG laufen weiter auf USB, nur nicht mehr auf UART/I2C) im selben USB-Byte-Stream interleaved mit UBX-Binärframes stören das Parsing/Timing und kosten dabei gelegentlich ein UBX-Frame — eine andere Variante des ursprünglichen "verlorene Bytes im Stream-Puffer"-Mechanismus, diesmal nicht durch Reader-Neuinstanziierung, sondern durch Message-Type-Mischung im Stream.
+
+**Test offen (nächster Schritt):** NMEA auf Base-USB testweise komplett auf 0 (nur RAM/"Send", nicht "Store" — reversibel per Reboot), gleicher 10s-dt-Test wiederholen.
+- Wenn dann sauber 100ms ohne Wechsel → NMEA-Interleaving bestätigt als (Teil-)Ursache → dauerhafte Lösung: GGA/VTG auf einen anderen Port (z.B. UART1) verlegen statt USB, damit `gps_measurement.py` (braucht Base_alt/Base_Speed aus GGA/VTG) weiter versorgt wird, ohne den NAV-PVT-Hauptstream zu stören.
+- Wenn weiterhin alterniert → kein NMEA-Thema, dann tiefer auf Pi/USB-Treiber-Ebene schauen (`dmesg`, roher Byte-Count wie am 30.05.).
+
+**Noch nicht getestet:** volle 4-Modul-Kette (Rover-Seite) nach der Base-Änderung — der Hoftest mit CSV-Export steht noch aus, ergibt aber erst nach dieser Isolierung Sinn.
+
+---
+
+## 2026-07-28 — Nachtrag: DEVLOG-Lücke Juni/Juli geschlossen
+
+**Was:** Standing Rule #3 (CLAUDE.md) verlangt "wichtige Zwischenstände sofort ins DEVLOG" — das war für den Zeitraum 03.06. bis 26.07.2026 nicht passiert. Die folgenden 5 Einträge (17.07. bis 15.06.) sind rückwirkend rekonstruiert aus Commit-Historie (`git log`) und `data/Feldtage/02_Analyse_Docs/SESSION_LOG_Auswertung.md` (lokal, außerhalb Repo).
+
+**Offener Punkt beim Rekonstruieren entdeckt:** SESSION_LOG_Auswertung.md behauptet für den 17.07. einen Code-Commit `9755749` ("iTOW-Bucket-Dict-Version", Branch `feat/subprocess-refactor`) inkl. Hinweis, der zugehörige DEVLOG-Text sei "lokal geändert (staged)" gewesen, aber wegen eines Sandbox-`index.lock`-Problems nie committed worden — mit der Anweisung, Falk solle das vom Mac aus nachholen. Verifiziert: **Commit `9755749` existiert nicht im Repo** (`git log --all`, `git fsck` — nicht auffindbar, auch nicht unreachable). `origin/feat/subprocess-refactor` steht exakt auf `5a322fe` (DLG-Lock), keinen Commit weiter. Der aktuelle Logger in `system/pi/gps_measurement.py` (`csv_logger_thread_buffered`, Zeile ~544) läuft bereits im iTOW-Dict-Modus — das ist aber Refactor C vom 30.05.2026, nicht die am 17.07. behauptete Änderung. **Der Milestone-A-Commit vom 17.07. ist vermutlich nie über den Sandbox-Lock hinausgekommen und komplett verlorengegangen**, nicht nur der DEVLOG-Text dazu.
+
+**Einordnung:** Praktisch folgenlos — der tatsächliche 5-Hz-Root-Cause war ohnehin ein anderer (UBXReader-Neuinstanziierung, siehe Eintrag 26.07.), der Milestone-A-Fix vom 17.07. war laut SESSION_LOG selbst nur eine Hypothese-basierte Korrektur am alten Queue-Sync-Pattern. Trotzdem: falls in `data/Feldtage/.../PLAN_Phase2-1_2026-07-10.md` (Milestone B / Subprocess-Refactor) auf Details aus dem verlorenen Commit `9755749` aufgebaut werden soll, ist der Code weg und müsste aus dem SESSION_LOG-Text neu geschrieben werden.
+
+**Test offen:** Keiner (reine Dokumentation). Falk ggf. fragen ob `feat/subprocess-refactor` als Branch noch gebraucht wird oder gelöscht werden kann, da er nichts Eigenes mehr enthält.
+
+---
+
+## 2026-07-26 — 5-Hz-Root-Cause gefunden und gefixt: UBXReader pro Thread neu instanziiert
+
+**Branch:** `fix/reader-once-per-thread` (von `main`/`v1.0-dlg`), Commit `8b0c6c5`.
+
+**Was:** In `BaseThread` + `Rover1/2/3_Thread` wurde `UBXReader(stream, validate=0)` bei **jeder** while-Iteration neu erzeugt statt einmal pro Thread. `pyubx2` hält einen internen Byte-Puffer, der beim Neu-Erzeugen verworfen wird — Partial-UBX-Frames aus dem Stream-Puffer gehen dabei verloren. Effekt: jede zweite NAV-PVT/NAV-RELPOSNED-Message wurde verpasst → effektive Rate 5 Hz statt 10 Hz. Fix: Reader wird beim Thread-Start einmal instanziert, danach nur noch `.read()` in der Schleife aufgerufen.
+
+**Warum jetzt erst gefunden:** Der Fix existierte bereits als Experiment `a56b95f` (31.05.2026, Branch `experiment/ubxreader-cleanup`), wurde damals aber nie nach `main` gemerged — genau der Fall, den Standing Rule #2 in CLAUDE.md referenziert ("3 Wochen an einem Bug debuggt der schon längst gefixt war").
+
+**Test offen:** Verifikations-Hoftest am Mittwoch 29.07.2026 abends (Falk), Testplan unter `data/Feldtage/02_Analyse_Docs/TESTPLAN_2026-07-29.md`. Erwartung: Median-dt springt von ~200 ms auf ~100 ms, ≥95 % der Samples ≤100 ms. Bei Erfolg: Merge nach `main`, Tag `v1.1-post-dlg`, danach Milestone B (Subprocess-Architektur) starten.
+
+**Risiko:** Nur `gps_measurement.py` geändert (14+/4−), Reader-Threads sonst unverändert. Kein Risiko für die bereits versendeten DLG-Kurzberichte — deren Std-Abw-Kennzahlen bleiben bei 5 Hz gültig (Nyquist für Boom-Schwingung 0.5–2 Hz erfüllt), nur Frequenz-Spektrum-Analysen (Angebot in den Kurzberichten) brauchen die 10 Hz.
+
+---
+
+## 2026-07-17 — Sample-Rate-Diagnose Phase 2.1: Bug isoliert (Hypothese, siehe Nachtrag oben)
+
+**Was:** Hz-Test am Pi (Falk) zeigt Base + alle 3 Rover feuern einzeln bei 10 Hz — F9P-Konfiguration damit als Ursache ausgeschlossen. Als Kandidat identifiziert: `.get()`-Aufrufe auf den Sync-Queues konsumierten Samples, bevor die iTOW-Toleranz-Prüfung lief — bei Mismatch wurden Samples verworfen statt zurückgelegt, Race zwischen asynchron befüllenden Reader-Threads. Offline-Simulator-Test (Worst-Case-Reordering) zeigte 0/200 vs. 200/200 emittierte Samples zwischen alt/neu.
+
+**Siehe Nachtrag 2026-07-28 oben:** der zugehörige Commit `9755749` ist nicht im Repo auffindbar — dieser Eintrag dokumentiert die Diagnose, nicht einen verifizierten Merge-Stand.
+
+**Test offen (damals geplant, nicht mehr relevant):** Feld-Test im Hof — wurde vermutlich nie durchgeführt, da der Root-Cause sich am 26.07. als ein anderer herausstellte (siehe oben).
+
+---
+
+## 2026-07-10 — Sample-Rate-Diagnose Phase 1: 5 Hz bei allen 6 DLG-Messläufen bestätigt
+
+**Was:** dt-Analyse über alle 6 DLG-CSVs (5 Hersteller, HORSCH mit 2 Läufen): Sample-Rate konstant 5.0 Hz bei **0 %** der Samples auf 10 Hz. Rate ist stabil, kein Drift.
+
+**Ausgeschlossen durch Korrelationsanalyse:** Multipath auf der Spritze (|r| < 0.15 zwischen dt und Speed/Heading-Rate), Akkumulations-Bug (dt in 1./3. Messdrittel identisch), Antennen-Setup.
+
+**Damalige Hypothese:** Base-Modul hat die USB-only-v2-Config nie erhalten (nur auf Rovern geflasht) → Base intern auf 5 Hz gedrosselt → Sync-Logger zieht alles auf 5 Hz. Bestätigt durch Hz-Test am 10.07. (Base UND Rover liefen tatsächlich alle bei 10 Hz einzeln — die Hypothese "Base gedrosselt" war damit widerlegt, der eigentliche Bug lag im Logger/Reader, siehe Einträge 17.07. und 26.07.).
+
+**Auswirkung auf die bereits versendeten Kurzberichte:** Std-Abw-Werte bleiben belastbar (Nyquist erfüllt für 0.5–2 Hz Boom-Schwingung). Frequenz-Spektrum-Analysen (im Angebotsteil aller 5 Kurzberichte enthalten) brauchen für eine bezahlte Folgemessung aber echte 10 Hz.
+
+**Erzeugte Dateien:** `data/Feldtage/02_Analyse_Docs/SampleRate_Diagnose_2026-07-10.docx` + `.xlsx`.
+
+---
+
+## 2026-07-02 — DLG-Auswertung fertiggestellt, 5 Kurzberichte an Hersteller versendet
+
+**Was:** Auswertung der DLG-Feldtage-Messungen (15.–18.06.2026 Bernburg) für 5 Hersteller-Spritzen (AGRIO, HORSCH, AGRIFAC, AMAZONE, KUHN; HORSCH mit 2 Messläufen, Lauf 1 verworfen). Kern-KPI: Std-Abw. R1/R2 in cm + % der Boom-Länge, Toleranz-Verteilung (±0.1/0.3/0.5 %).
+
+**Methodik-Wechsel auf "Option D"** (Falks Entscheidung, angewendet auf alle 5 Berichte einheitlich): Heading-Rate-Schwelle 3°/s → 2°/s, Speed-Cutoff 3 → 5 km/h, Ausreißer-Cap ±3σ, Median-Zentrierung R1+R2 (Zero-Offset raus). Alle vier Änderungen sind ISO-2631-Standardpraxis, kein Zahlen-Schönen. Größter Effekt: KUHN R2 (±0.5 %-Anteil springt 28 % → 94 %) — lag an einem Tare-Zero-Offset, nicht an der eigentlichen Schwingung.
+
+**KUHN-Caveat:** Antennen mussten aus Montage-Gründen bei 30 m statt am echten 36 m-Boom-Ende sitzen — im Kurzbericht als kursiver Hinweis vermerkt, im internen Vergleich als Klassen-Sonderfall markiert.
+
+**Baseline-Backup** vor der Option-D-Umstellung unter `data/Feldtage/_archiv/backup_baseline_2026-07-02/`.
+
+**Versendet:** 15.06. abends alle 5 `MotionPSM_Kurzbericht_<Hersteller>.docx`. Jeweils 1-seitig: Std-R1/R2-KPI-Kacheln, Toleranz-Tabelle, Angebots-Kasten (Frequenz-Spektrum, R&D-Messungen, Asymmetrie, Fahrgeschwindigkeit) für bezahlte Folgemessung. Kein Hersteller-Vergleich in den Berichten (Vertraulichkeit).
+
+**Danach priorisiert (Falks Ansage 02.07.):** stabile 10 Hz Sample-Rate zuerst, vor Auto-Auswertungs-Pipeline — "sonst automatisieren wir im Zweifel schlechte Daten." Daraus resultierten die Diagnose-Einträge 10.07./17.07./26.07. oben.
+
+**Test offen:** Follow-up mit den 5 Herstellern auf Reaktion/Interesse an Folgemessung — Stand 28.07. noch offen.
+
+---
+
+## 2026-06-15 bis 18 — DLG-Feldtage Bernburg: Live-Messungen bei 6 Hersteller-Vorführungen
+
+**Was:** Vor-Ort-Einsatz des MotionPSM-Systems (`v1.0-dlg`-Stand, Tag `v1.0-dlg` auf `5a322fe`) bei den DLG-Feldtagen. Boom-Schwingungsmessungen an Feldspritzen von AGRIO und HORSCH (30 m-Klasse) sowie AGRIFAC, AMAZONE und KUHN (36 m-Klasse) — HORSCH mit 2 Messläufen (Lauf 1 später verworfen, Lauf 2 als Marken-Repräsentant genutzt), macht 6 Messläufe über 5 Hersteller.
+
+**Warum:** Erster Praxiseinsatz nach dem DLG-Lock (Merge `feature/ui-system-restart` → `main`, 02.06.2026). Ziel: belastbare Vergleichsdaten für Kunden-Kurzberichte und Grundlage für Folgemessungs-Angebote.
+
+**Test offen (Stand 15.06.):** keiner mehr offen — Rohdaten wurden erfolgreich erfasst, Roh-Excels unter `data/Feldtage/6× 20260630_*.xlsx` liegen als Basis für die Auswertung ab 30.06. (siehe Eintrag 02.07. oben).
+
+**Risiko:** Rückblickend erkannt (siehe Eintrag 10.07.): alle 6 Messläufe liefen faktisch mit 5 Hz statt der angenommenen 10 Hz. Kein Blocker für Std-Abw.-KPIs (Nyquist erfüllt), aber relevant für zukünftige Frequenz-Spektrum-Angebote.
+
+---
+
 ## 2026-06-02 spaet abends — UI-Politur (Branch feature/ui-system-restart)
 
 Iteration auf dem Reboot/Refresh-Branch nach Falks Feedback:
